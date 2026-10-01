@@ -87,23 +87,17 @@ impl ApplicationService {
             selected.push((source, provider.clone()));
         }
 
-        let provider_count = selected.len().max(1);
-        let request_for_stream = request.clone();
-        let progress_for_stream = progress.clone();
-        let cancel_for_stream = cancel.clone();
-        let outputs = stream::iter(selected)
-            .map(move |(source, provider)| {
-                let request = request_for_stream.clone();
-                let progress = progress_for_stream.clone();
-                let cancel = cancel_for_stream.clone();
-                async move {
-                    let result = provider.search(&request, progress, cancel).await;
-                    (source, result)
-                }
-            })
-            .buffer_unordered(provider_count)
-            .collect::<Vec<_>>()
-            .await;
+        let pending = stream::FuturesUnordered::new();
+        for (source, provider) in selected {
+            let request = request.clone();
+            let progress = progress.clone();
+            let cancel = cancel.clone();
+            pending.push(async move {
+                let result = provider.search(&request, progress, cancel).await;
+                (source, result)
+            });
+        }
+        let outputs = pending.collect::<Vec<_>>().await;
 
         for (source, result) in outputs {
             match result {
