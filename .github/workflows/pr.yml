@@ -16,7 +16,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
       - name: Git whitespace
         run: git diff --check origin/${{ github.base_ref }}...HEAD
       - name: Rust format
         run: cargo fmt --all -- --check
+      - name: Rust check (core)
+        run: cargo check --workspace --exclude twogis-extractor-desktop --locked

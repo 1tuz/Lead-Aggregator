@@ -2,6 +2,7 @@ use std::{collections::HashSet, time::Duration};
 
 use async_trait::async_trait;
 use chrono::Utc;
+use futures::{StreamExt, stream};
 use regex::Regex;
 use reqwest::{Client, StatusCode};
 use scraper::{Html, Selector};
@@ -9,7 +10,9 @@ use tokio_util::sync::CancellationToken;
 use twogis_domain::{
     AppError, ErrorKind, Organization, ProgressPhase, ScrapeProgress, SearchRequest, SourceKind,
 };
-use twogis_provider_core::{DirectoryProvider, ProgressSink, ProviderOutput, ProviderPolicy};
+use twogis_provider_core::{
+    DirectoryProvider, ProgressSink, ProviderOutput, ProviderPolicy, ProviderRuntime,
+};
 use url::Url;
 
 #[derive(Clone)]
@@ -144,16 +147,18 @@ impl DirectoryProvider for YellHtmlProvider {
         progress: ProgressSink,
         cancel: CancellationToken,
     ) -> Result<ProviderOutput, AppError> {
+        let runtime = ProviderRuntime::for_request(self.policy(), request);
         let candidates = collect_candidates(
             self,
             request,
             progress.clone(),
             cancel.clone(),
+            runtime.clone(),
             |provider, page| provider.search_url(request, page),
             |provider, html| provider.discover(request, html),
         )
         .await?;
-        enrich_candidates(self, request, candidates, progress, cancel).await
+        enrich_candidates(self, candidates, progress, cancel, runtime).await
     }
 }
 
@@ -222,16 +227,18 @@ impl DirectoryProvider for ZoonHtmlProvider {
         progress: ProgressSink,
         cancel: CancellationToken,
     ) -> Result<ProviderOutput, AppError> {
+        let runtime = ProviderRuntime::for_request(self.policy(), request);
         let candidates = collect_candidates(
             self,
             request,
             progress.clone(),
             cancel.clone(),
+            runtime.clone(),
             |provider, page| provider.search_url(request, page),
             |provider, html| provider.discover(html),
         )
         .await?;
-        enrich_candidates(self, request, candidates, progress, cancel).await
+        enrich_candidates(self, candidates, progress, cancel, runtime).await
     }
 }
 
@@ -291,16 +298,18 @@ impl DirectoryProvider for RusprofileHtmlProvider {
         progress: ProgressSink,
         cancel: CancellationToken,
     ) -> Result<ProviderOutput, AppError> {
+        let runtime = ProviderRuntime::for_request(self.policy(), request);
         let candidates = collect_candidates(
             self,
             request,
             progress.clone(),
             cancel.clone(),
+            runtime.clone(),
             |provider, page| provider.search_url(request, page),
             |provider, html| provider.discover(html),
         )
         .await?;
-        enrich_candidates(self, request, candidates, progress, cancel).await
+        enrich_candidates(self, candidates, progress, cancel, runtime).await
     }
 }
 
@@ -329,6 +338,7 @@ async fn collect_candidates<P, SearchUrl, Discover>(
     request: &SearchRequest,
     progress: ProgressSink,
     cancel: CancellationToken,
+    runtime: ProviderRuntime,
     search_url: SearchUrl,
     discover: Discover,
 ) -> Result<Vec<Url>, AppError>
@@ -339,7 +349,6 @@ where
 {
     let mut seen = HashSet::new();
     let mut candidates = Vec::new();
-    let delay = request.request_delay_ms.max(provider.policy().min_delay_ms);
 
     for page in 1..=request.max_pages {
         if cancel.is_cancelled() {
@@ -352,7 +361,9 @@ where
             message: format!("{}: страница {page}", provider.source().label()),
         });
         let url = search_url(provider, page)?;
-        let html = provider.http().fetch(provider.source(), &url).await?;
+        let html = runtime
+            .run(&cancel, provider.http().fetch(provider.source(), &url))
+            .await?;
         let found = discover(provider, &html);
         let before = candidates.len();
         for url in found {
@@ -366,7 +377,6 @@ where
         if candidates.len() >= request.max_results as usize || candidates.len() == before {
             break;
         }
-        tokio::time::sleep(Duration::from_millis(u64::from(delay))).await;
     }
     candidates.truncate(request.max_results as usize);
     Ok(candidates)
@@ -374,33 +384,51 @@ where
 
 async fn enrich_candidates<P: PublicCatalog>(
     provider: &P,
-    request: &SearchRequest,
     candidates: Vec<Url>,
     progress: ProgressSink,
     cancel: CancellationToken,
+    runtime: ProviderRuntime,
 ) -> Result<ProviderOutput, AppError> {
     let total = candidates.len() as u32;
-    let delay = request.request_delay_ms.max(provider.policy().min_delay_ms);
-    let mut output = ProviderOutput::default();
+    let concurrency = runtime.concurrency();
+    let provider = provider.clone();
+    let runtime_for_stream = runtime.clone();
+    let progress_for_stream = progress.clone();
+    let cancel_for_stream = cancel.clone();
 
-    for (index, url) in candidates.into_iter().enumerate() {
-        if cancel.is_cancelled() {
-            return Err(AppError::cancelled());
-        }
-        tokio::time::sleep(Duration::from_millis(u64::from(delay))).await;
-        match provider.http().fetch(provider.source(), &url).await {
-            Ok(html) => match parse_public_profile(provider.source(), &url, &html) {
-                Ok(row) => {
-                    (progress)(ScrapeProgress {
-                        phase: ProgressPhase::Enriching,
-                        current: index as u32 + 1,
-                        total: Some(total),
-                        message: format!("{}: {}", provider.source().label(), row.name),
-                    });
-                    output.organizations.push(row);
+    let results = stream::iter(candidates.into_iter().enumerate())
+        .map(move |(index, url)| {
+            let provider = provider.clone();
+            let runtime = runtime_for_stream.clone();
+            let progress = progress_for_stream.clone();
+            let cancel = cancel_for_stream.clone();
+            async move {
+                if cancel.is_cancelled() {
+                    return Err(AppError::cancelled());
                 }
-                Err(err) => output.warnings.push(err.message),
-            },
+                let source = provider.source();
+                let html = runtime
+                    .run(&cancel, provider.http().fetch(source, &url))
+                    .await?;
+                let row = parse_public_profile(source, &url, &html)?;
+                (progress)(ScrapeProgress {
+                    phase: ProgressPhase::Enriching,
+                    current: index as u32 + 1,
+                    total: Some(total),
+                    message: format!("{}: {}", source.label(), row.name),
+                });
+                Ok::<_, AppError>(row)
+            }
+        })
+        .buffer_unordered(concurrency)
+        .collect::<Vec<_>>()
+        .await;
+
+    let mut output = ProviderOutput::default();
+    for result in results {
+        match result {
+            Ok(row) => output.organizations.push(row),
+            Err(err) if matches!(err.kind, ErrorKind::Cancelled) => return Err(err),
             Err(err) if matches!(err.kind, ErrorKind::RateLimited | ErrorKind::Blocked) => {
                 return Err(err);
             }

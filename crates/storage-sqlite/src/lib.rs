@@ -4,7 +4,7 @@ use sqlx::{
     Row, SqlitePool,
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
 };
-use twogis_domain::{AppError, DedupeInfo, Organization};
+use twogis_domain::{AppError, DedupeInfo, Organization, RunSummary, SearchRequest};
 
 #[derive(Clone)]
 pub struct SqliteStore {
@@ -79,6 +79,44 @@ impl SqliteStore {
         .execute(&self.pool)
         .await
         .map_err(|e| AppError::storage(format!("failed to create source_records: {e}")))?;
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS search_runs (
+              run_id TEXT PRIMARY KEY,
+              started_at TEXT NOT NULL,
+              finished_at TEXT NOT NULL,
+              request_json TEXT NOT NULL,
+              warnings_json TEXT NOT NULL,
+              raw_records INTEGER NOT NULL,
+              duplicates_merged INTEGER NOT NULL,
+              organization_count INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::storage(format!("failed to create search_runs: {e}")))?;
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS run_organizations (
+              run_id TEXT NOT NULL,
+              organization_id TEXT NOT NULL,
+              PRIMARY KEY (run_id, organization_id)
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::storage(format!("failed to create run_organizations: {e}")))?;
+
+        sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_run_organizations_org ON run_organizations(organization_id)",
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::storage(format!("failed to index run organizations: {e}")))?;
 
         let mut tx = self.pool.begin().await.map_err(storage_error)?;
         sqlx::query(
@@ -200,6 +238,24 @@ impl SqliteStore {
             .map_err(|e| AppError::storage(format!("failed to start transaction: {e}")))?;
 
         for row in rows {
+            for source in &row.sources {
+                if source.source_id != row.id {
+                    sqlx::query(
+                        "DELETE FROM organizations WHERE id = ? AND source_url = ? AND id <> ?",
+                    )
+                    .bind(&source.source_id)
+                    .bind(&source.source_url)
+                    .bind(&row.id)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(|e| {
+                        AppError::storage(format!(
+                            "failed to remove legacy source-keyed organization: {e}"
+                        ))
+                    })?;
+                }
+            }
+
             let phones = encode(&row.phones, "phones")?;
             let socials = encode(&row.socials, "socials")?;
             let sources = encode(&row.sources, "sources")?;
@@ -266,6 +322,70 @@ impl SqliteStore {
         tx.commit()
             .await
             .map_err(|e| AppError::storage(format!("failed to commit results: {e}")))?;
+        Ok(())
+    }
+
+    pub async fn record_run(
+        &self,
+        summary: &RunSummary,
+        request: &SearchRequest,
+    ) -> Result<(), AppError> {
+        let request_json = encode(request, "search request")?;
+        let warnings_json = encode(&summary.warnings, "run warnings")?;
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| AppError::storage(format!("failed to start run transaction: {e}")))?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO search_runs (
+              run_id, started_at, finished_at, request_json, warnings_json,
+              raw_records, duplicates_merged, organization_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(run_id) DO UPDATE SET
+              started_at=excluded.started_at,
+              finished_at=excluded.finished_at,
+              request_json=excluded.request_json,
+              warnings_json=excluded.warnings_json,
+              raw_records=excluded.raw_records,
+              duplicates_merged=excluded.duplicates_merged,
+              organization_count=excluded.organization_count
+            "#,
+        )
+        .bind(&summary.run_id)
+        .bind(&summary.started_at)
+        .bind(&summary.finished_at)
+        .bind(request_json)
+        .bind(warnings_json)
+        .bind(i64::from(summary.raw_records))
+        .bind(i64::from(summary.duplicates_merged))
+        .bind(i64::try_from(summary.organizations.len()).unwrap_or(i64::MAX))
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| AppError::storage(format!("failed to persist search run: {e}")))?;
+
+        sqlx::query("DELETE FROM run_organizations WHERE run_id = ?")
+            .bind(&summary.run_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::storage(format!("failed to refresh run organizations: {e}")))?;
+
+        for row in &summary.organizations {
+            sqlx::query(
+                "INSERT OR IGNORE INTO run_organizations (run_id, organization_id) VALUES (?, ?)",
+            )
+            .bind(&summary.run_id)
+            .bind(&row.id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::storage(format!("failed to link run organization: {e}")))?;
+        }
+
+        tx.commit()
+            .await
+            .map_err(|e| AppError::storage(format!("failed to commit search run: {e}")))?;
         Ok(())
     }
 

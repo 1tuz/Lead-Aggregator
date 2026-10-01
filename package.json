@@ -1,5 +1,5 @@
 {
-  "name": "twogis-extractor-workspace",
+  "name": "lead-aggregator-workspace",
   "private": true,
   "packageManager": "pnpm@11.10.0",
   "scripts": {

@@ -4978,9 +4978,10 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "twogis-application"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "chrono",
+ "futures",
  "tokio-util",
  "twogis-dedupe",
  "twogis-domain",
@@ -4992,7 +4993,7 @@ dependencies = [
 
 [[package]]
 name = "twogis-dedupe"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "regex",
  "twogis-domain",
@@ -5001,7 +5002,7 @@ dependencies = [
 
 [[package]]
 name = "twogis-domain"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "serde",
  "specta",
@@ -5010,7 +5011,7 @@ dependencies = [
 
 [[package]]
 name = "twogis-export"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "csv",
  "rust_xlsxwriter",
@@ -5020,7 +5021,7 @@ dependencies = [
 
 [[package]]
 name = "twogis-extractor-desktop"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "chrono",
  "serde",
@@ -5041,7 +5042,7 @@ dependencies = [
 
 [[package]]
 name = "twogis-provider"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -5058,19 +5059,21 @@ dependencies = [
 
 [[package]]
 name = "twogis-provider-core"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "async-trait",
+ "tokio",
  "tokio-util",
  "twogis-domain",
 ]
 
 [[package]]
 name = "twogis-provider-public-catalogs"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "async-trait",
  "chrono",
+ "futures",
  "regex",
  "reqwest 0.12.28",
  "scraper",
@@ -5083,7 +5086,7 @@ dependencies = [
 
 [[package]]
 name = "twogis-storage-sqlite"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "serde",
  "serde_json",

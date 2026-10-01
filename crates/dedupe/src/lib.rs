@@ -89,7 +89,7 @@ fn find_match(
         .or_else(|| {
             row.website
                 .as_deref()
-                .and_then(normalize_domain)
+                .and_then(dedupe_domain)
                 .and_then(|domain| by_domain.get(&domain).copied())
         })
         .or_else(|| {
@@ -116,7 +116,7 @@ fn index_row(
     for phone in row.phones.iter().filter_map(|phone| normalize_phone(phone)) {
         by_phone.insert(phone, index);
     }
-    if let Some(domain) = row.website.as_deref().and_then(normalize_domain) {
+    if let Some(domain) = row.website.as_deref().and_then(dedupe_domain) {
         by_domain.insert(domain, index);
     }
     if let Some(key) = name_address_key(row) {
@@ -211,13 +211,16 @@ fn fingerprint(row: &Organization) -> String {
     if let Some(phone) = row.phones.iter().find_map(|phone| normalize_phone(phone)) {
         return format!("phone:{phone}");
     }
-    if let Some(domain) = row.website.as_deref().and_then(normalize_domain) {
+    if let Some(domain) = row.website.as_deref().and_then(dedupe_domain) {
         return format!("domain:{domain}");
     }
     if let Some(key) = name_address_key(row) {
         return format!("name-address:{key}");
     }
-    format!("source:{}", row.id)
+    row.sources
+        .first()
+        .map(|source| format!("source:{}:{}", source.source.id(), source.source_id))
+        .unwrap_or_else(|| format!("source:unknown:{}", row.id))
 }
 
 fn name_address_key(row: &Organization) -> Option<String> {
@@ -230,11 +233,12 @@ fn name_address_key(row: &Organization) -> Option<String> {
 }
 
 fn normalize_name(value: &str) -> String {
-    let mut text = value.to_lowercase();
-    for prefix in ["ооо", "ао", "пао", "ип", "зао", "оао"] {
-        text = text.replace(prefix, " ");
-    }
-    normalize_text(&text)
+    const LEGAL_FORMS: &[&str] = &["ооо", "ао", "пао", "ип", "зао", "оао"];
+    normalize_text(value)
+        .split_whitespace()
+        .filter(|token| !LEGAL_FORMS.contains(token))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn normalize_text(value: &str) -> String {
@@ -282,6 +286,28 @@ pub fn normalize_domain(value: &str) -> Option<String> {
         .ok()?;
     let host = parsed.host_str()?.trim_start_matches("www.").to_lowercase();
     (!host.is_empty()).then_some(host)
+}
+
+fn dedupe_domain(value: &str) -> Option<String> {
+    let host = normalize_domain(value)?;
+    const SHARED_DOMAINS: &[&str] = &[
+        "2gis.ru",
+        "yell.ru",
+        "zoon.ru",
+        "rusprofile.ru",
+        "vk.com",
+        "t.me",
+        "taplink.cc",
+        "linktr.ee",
+        "business.site",
+    ];
+    let shared = SHARED_DOMAINS.iter().any(|domain| {
+        host == *domain
+            || host
+                .strip_suffix(domain)
+                .is_some_and(|prefix| prefix.ends_with('.'))
+    });
+    (!shared).then_some(host)
 }
 
 fn push_unique<T: PartialEq>(values: &mut Vec<T>, value: T) {
@@ -341,6 +367,25 @@ mod tests {
                 .iter()
                 .all(|row| row.dedupe.possible_duplicate)
         );
+    }
+
+    #[test]
+    fn preserves_legal_form_substrings_inside_real_words() {
+        assert_eq!(normalize_name("Кипарис"), "кипарис");
+        assert_eq!(normalize_name("ООО Кипарис"), "кипарис");
+    }
+
+    #[test]
+    fn does_not_merge_shared_profile_domains() {
+        let mut a = row("shared-a", "Альфа", "", SourceKind::TwoGis);
+        a.phones.clear();
+        a.website = Some("https://taplink.cc/alpha".into());
+        let mut b = row("shared-b", "Бета", "", SourceKind::Yell);
+        b.phones.clear();
+        b.website = Some("https://taplink.cc/beta".into());
+
+        let result = deduplicate(vec![a, b]);
+        assert_eq!(result.organizations.len(), 2);
     }
 
     #[test]

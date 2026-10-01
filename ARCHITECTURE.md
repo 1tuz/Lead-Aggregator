@@ -15,13 +15,13 @@
 ## Слои
 
 - `crates/domain` — модели, ошибки, `SourceKind`, provenance, теги и настройки поиска.
-- `crates/provider-core` — общий контракт `DirectoryProvider` и консервативная политика запросов.
+- `crates/provider-core` — общий контракт `DirectoryProvider` и `ProviderRuntime`: минимальная задержка, ограничение параллельности и отмена запросов.
 - `crates/provider-2gis` — 2GIS public HTML adapter.
 - `crates/provider-public-catalogs` — Yell, Zoon и Rusprofile public HTML adapters.
 - `crates/dedupe` — нормализация телефона/домена/названия и deterministic entity resolution.
-- `crates/storage-sqlite` — canonical leads + неизменяемые исходные записи источников.
+- `crates/storage-sqlite` — canonical leads + неизменяемые исходные записи источников + история `search_runs` и связь результатов с запуском.
 - `crates/export` — CSV/XLSX/JSON с INN/OGRN, источниками и тегами.
-- `crates/application` — оркестрация нескольких источников, soft-fail одного источника, dedupe и persistence.
+- `crates/application` — параллельная оркестрация независимых источников, soft-fail одного источника, dedupe и persistence.
 - `apps/desktop/src-tauri` — composition root + typed IPC.
 - `apps/desktop/src` — Svelte 5 UI, без внешних HTTP-запросов.
 
@@ -50,7 +50,7 @@
 
 ## Политика запросов
 
-Каждый provider имеет собственные минимальные задержки и максимальную параллельность. Пользователь может сделать режим медленнее, но не быстрее встроенного минимума.
+Каждый provider имеет собственные минимальные задержки и максимальную параллельность. Пользователь может сделать режим медленнее, но не быстрее встроенного минимума. Независимые источники запускаются параллельно, при этом `ProviderRuntime` применяет ограничения отдельно к каждому источнику.
 
 - 2GIS: минимум 650 ms, до 4 параллельных карточек.
 - Yell: минимум 1000 ms, до 2.

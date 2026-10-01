@@ -68,7 +68,7 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v6
         with:
-          name: 2GIS-${{ matrix.platform }}
+          name: Lead-Aggregator-${{ matrix.platform }}
           path: ${{ matrix.artifact }}
           if-no-files-found: error
           retention-days: 14
@@ -84,7 +84,7 @@ jobs:
       - name: Download platform installers
         uses: actions/download-artifact@v7
         with:
-          pattern: 2GIS-*
+          pattern: Lead-Aggregator-*
           path: release-assets
           merge-multiple: true
       - name: Publish GitHub release

@@ -10,7 +10,9 @@ use tokio_util::sync::CancellationToken;
 use twogis_domain::{
     AppError, ErrorKind, ProgressPhase, ScrapeProgress, SearchRequest, SourceKind,
 };
-use twogis_provider_core::{DirectoryProvider, ProgressSink, ProviderOutput, ProviderPolicy};
+use twogis_provider_core::{
+    DirectoryProvider, ProgressSink, ProviderOutput, ProviderPolicy, ProviderRuntime,
+};
 use url::Url;
 
 #[derive(Clone)]
@@ -22,7 +24,7 @@ pub struct TwoGisHtmlProvider {
 impl TwoGisHtmlProvider {
     pub fn new() -> Result<Self, AppError> {
         let client = Client::builder()
-            .user_agent("twogis-extractor/0.1 (+local desktop app; public HTML only)")
+            .user_agent("lead-aggregator/0.2 (+local desktop app; public HTML only)")
             .timeout(Duration::from_secs(20))
             .build()
             .map_err(|e| AppError::network(format!("failed to create HTTP client: {e}")))?;
@@ -156,6 +158,7 @@ impl DirectoryProvider for TwoGisHtmlProvider {
         cancel: CancellationToken,
     ) -> Result<ProviderOutput, AppError> {
         request.validate()?;
+        let runtime = ProviderRuntime::for_request(self.policy(), request);
 
         let mut candidates = Vec::<(String, String)>::new();
         let mut seen = HashSet::new();
@@ -171,7 +174,7 @@ impl DirectoryProvider for TwoGisHtmlProvider {
                 message: format!("Scanning search page {page}"),
             });
             let url = self.search_url(request, page)?;
-            let html = self.fetch_html(&url).await?;
+            let html = runtime.run(&cancel, self.fetch_html(&url)).await?;
             let found = self.discover_firms(&html);
             if found.is_empty() {
                 break;
@@ -188,37 +191,31 @@ impl DirectoryProvider for TwoGisHtmlProvider {
             if candidates.len() >= request.max_results as usize || candidates.len() == before {
                 break;
             }
-            tokio::time::sleep(Duration::from_millis(u64::from(request.request_delay_ms))).await;
         }
 
         candidates.truncate(request.max_results as usize);
         let total = candidates.len() as u32;
-        let concurrency = usize::from(
-            request
-                .concurrency
-                .min(self.policy().max_concurrency)
-                .max(1),
-        );
-        let delay = u64::from(request.request_delay_ms.max(self.policy().min_delay_ms));
+        let concurrency = runtime.concurrency();
         let provider = self.clone();
+        let runtime_for_stream = runtime.clone();
         let progress_for_stream = progress.clone();
         let cancel_for_stream = cancel.clone();
 
         let results = stream::iter(candidates.into_iter().enumerate())
             .map(move |(index, (url, fallback_name))| {
                 let provider = provider.clone();
+                let runtime = runtime_for_stream.clone();
                 let progress = progress_for_stream.clone();
                 let cancel = cancel_for_stream.clone();
                 async move {
                     if cancel.is_cancelled() {
                         return Err(AppError::cancelled());
                     }
-                    if delay > 0 {
-                        tokio::time::sleep(Duration::from_millis(delay)).await;
-                    }
                     let parsed_url = Url::parse(&url)
                         .map_err(|e| AppError::parse(format!("bad organization URL: {e}")))?;
-                    let html = provider.fetch_html(&parsed_url).await?;
+                    let html = runtime
+                        .run(&cancel, provider.fetch_html(&parsed_url))
+                        .await?;
                     let mut organization = parse::parse_firm_page(&url, &html)?;
                     organization.attach_source(SourceKind::TwoGis);
                     if organization.name.is_empty() {

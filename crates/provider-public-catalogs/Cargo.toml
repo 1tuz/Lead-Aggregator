@@ -8,6 +8,7 @@ rust-version.workspace = true
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true
+futures.workspace = true
 regex.workspace = true
 reqwest.workspace = true
 scraper.workspace = true
