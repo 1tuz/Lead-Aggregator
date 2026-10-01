@@ -16,15 +16,15 @@
 
 Телефоны и другие контакты могут быть скрыты самим каталогом; такие поля останутся пустыми.
 
-## Установка приложения
+## Установка
 
-Из корня проекта выполните:
+Установите последнюю опубликованную сборку macOS одной командой в Терминале:
 
 ```bash
-./scripts/install-macos.sh
+curl -fsSL https://raw.githubusercontent.com/1tuz/Lead-Aggregator/main/scripts/install-macos.sh | sh
 ```
 
-Скрипт проверит инструменты, соберёт приложение и установит его в `~/Applications/Lead Aggregator.app`.
+Скрипт скачает `.dmg` из [последнего GitHub Release](https://github.com/1tuz/Lead-Aggregator/releases), выберет сборку для Apple Silicon или Intel и установит приложение в `~/Applications/Lead Aggregator.app`.
 
 ## Запуск в разработке
 

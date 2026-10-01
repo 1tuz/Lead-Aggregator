@@ -18,6 +18,10 @@ jobs:
       matrix:
         include:
           - platform: macOS
+            runner: macos-15
+            bundles: app,dmg
+            artifact: target/release/bundle/dmg/*.dmg
+          - platform: macOS Intel
             runner: macos-15-intel
             bundles: app,dmg
             artifact: target/release/bundle/dmg/*.dmg
@@ -44,7 +48,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes \
+          sudo apt-get install --yes --no-install-recommends --no-install-suggests \
             libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev \
             libssl-dev libayatana-appindicator3-dev librsvg2-dev
       - name: Install frontend dependencies
