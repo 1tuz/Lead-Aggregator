@@ -1,0 +1,14 @@
+{
+  "name": "twogis-extractor-workspace",
+  "private": true,
+  "packageManager": "pnpm@11.10.0",
+  "scripts": {
+    "dev": "pnpm --dir apps/desktop tauri dev",
+    "build": "pnpm --dir apps/desktop tauri build",
+    "check:ui": "pnpm --dir apps/desktop check",
+    "format:ui": "pnpm --dir apps/desktop format"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3"
+  }
+}

@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 960" role="img" aria-labelledby="architecture-title architecture-desc">
+  <title id="architecture-title">Из чего состоит программа</title>
+  <desc id="architecture-desc">Схема показывает, как человек задаёт поиск в окне приложения, приложение получает карточки с каталогов, сохраняет и объединяет их, а затем создаёт файл с результатом.</desc>
+  <defs>
+    <marker id="architecture-arrow" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+      <path d="M1 1 L7 4 L1 7 Z" fill="#6a717d"/>
+    </marker>
+    <style>
+      .title { font: 600 36px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #f2f4f7; }
+      .subtitle { font: 400 20px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #9aa2af; }
+      .zone { font: 600 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #9aa2af; letter-spacing: 1px; }
+      .node-title { font: 600 23px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #f2f4f7; }
+      .node-copy { font: 400 18px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #b9c0cb; }
+      .small { font: 400 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #b9c0cb; }
+    </style>
+  </defs>
+
+  <rect width="1280" height="960" rx="28" fill="#0f1115"/>
+  <text class="title" x="70" y="76">Из чего состоит программа</text>
+  <text class="subtitle" x="70" y="112">От запроса и сайтов до сохранённого списка.</text>
+
+  <rect x="390" y="154" width="520" height="686" rx="24" fill="#151922" stroke="#343b47" stroke-width="2"/>
+  <text class="zone" x="430" y="190">ПРИЛОЖЕНИЕ НА КОМПЬЮТЕРЕ</text>
+
+  <g fill="none" stroke="#6a717d" stroke-width="2" marker-end="url(#architecture-arrow)">
+    <path d="M350 260 H410"/>
+    <path d="M670 326 V399"/>
+    <path d="M350 500 H410"/>
+    <path d="M670 601 V659"/>
+    <path d="M890 720 H970"/>
+  </g>
+
+  <g>
+    <rect x="70" y="210" width="280" height="100" rx="18" fill="#181b21" stroke="#343b47" stroke-width="2"/>
+    <text class="node-title" x="96" y="250">Вы</text>
+    <text class="node-copy" x="96" y="280">Задаёте, кого искать.</text>
+  </g>
+
+  <g>
+    <rect x="70" y="420" width="280" height="160" rx="18" fill="#181b21" stroke="#343b47" stroke-width="2"/>
+    <text class="node-title" x="96" y="464">Каталоги компаний</text>
+    <text class="node-copy" x="96" y="500">2ГИС · Yell</text>
+    <text class="node-copy" x="96" y="530">Zoon · Rusprofile</text>
+  </g>
+
+  <g>
+    <rect x="430" y="218" width="480" height="108" rx="18" fill="#181b21" stroke="#343b47" stroke-width="2"/>
+    <text class="node-title" x="462" y="260">Окно приложения</text>
+    <text class="node-copy" x="462" y="292">Настройка поиска и просмотр результата.</text>
+  </g>
+
+  <g>
+    <rect x="430" y="418" width="480" height="183" rx="18" fill="#181b21" stroke="#343b47" stroke-width="2"/>
+    <text class="node-title" x="462" y="463">Поиск и обработка карточек</text>
+    <text class="node-copy" x="462" y="500">Получает карточки с выбранных сайтов,</text>
+    <text class="node-copy" x="462" y="530">сохраняет их и объединяет совпадения.</text>
+    <text class="small" x="462" y="567">Одного похожего названия недостаточно.</text>
+  </g>
+
+  <g>
+    <rect x="430" y="668" width="460" height="104" rx="18" fill="#181b21" stroke="#f4f4f5" stroke-width="2"/>
+    <text class="node-title" x="462" y="711">Сохранённый список</text>
+    <text class="node-copy" x="462" y="743">Карточки сайтов и общий результат.</text>
+  </g>
+
+  <g>
+    <rect x="970" y="668" width="240" height="104" rx="18" fill="#181b21" stroke="#343b47" stroke-width="2"/>
+    <text class="node-title" x="996" y="711">Файл</text>
+    <text class="node-copy" x="996" y="743">CSV · Excel · JSON</text>
+  </g>
+</svg>

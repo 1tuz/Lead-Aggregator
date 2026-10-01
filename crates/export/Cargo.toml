@@ -1,0 +1,15 @@
+[package]
+name = "twogis-export"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+csv.workspace = true
+rust_xlsxwriter.workspace = true
+serde_json.workspace = true
+twogis-domain = { path = "../domain" }
+
+[lints]
+workspace = true

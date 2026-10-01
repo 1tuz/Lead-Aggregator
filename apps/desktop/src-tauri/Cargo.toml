@@ -1,0 +1,32 @@
+[package]
+name = "twogis-extractor-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "twogis_extractor_desktop_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+chrono.workspace = true
+serde.workspace = true
+specta.workspace = true
+specta-typescript.workspace = true
+tauri = { version = "2", features = [] }
+tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
+tokio.workspace = true
+tokio-util.workspace = true
+twogis-application = { path = "../../../crates/application" }
+twogis-domain = { path = "../../../crates/domain" }
+twogis-provider = { path = "../../../crates/provider-2gis" }
+twogis-provider-core = { path = "../../../crates/provider-core" }
+twogis-provider-public-catalogs = { path = "../../../crates/provider-public-catalogs" }
+twogis-storage-sqlite = { path = "../../../crates/storage-sqlite" }
+
+[lints]
+workspace = true

@@ -1,0 +1,22 @@
+name: PR quick checks
+
+on:
+  pull_request:
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  quick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt
+      - name: Git whitespace
+        run: git diff --check origin/${{ github.base_ref }}...HEAD
+      - name: Rust format
+        run: cargo fmt --all -- --check

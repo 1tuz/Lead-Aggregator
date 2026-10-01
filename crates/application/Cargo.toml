@@ -1,0 +1,19 @@
+[package]
+name = "twogis-application"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+chrono.workspace = true
+tokio-util.workspace = true
+uuid.workspace = true
+twogis-domain = { path = "../domain" }
+twogis-dedupe = { path = "../dedupe" }
+twogis-export = { path = "../export" }
+twogis-provider-core = { path = "../provider-core" }
+twogis-storage-sqlite = { path = "../storage-sqlite" }
+
+[lints]
+workspace = true

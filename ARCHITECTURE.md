@@ -1,0 +1,68 @@
+# Architecture
+
+## Правило №1
+
+`domain`, `application`, providers, `dedupe`, `storage-sqlite` и `export` не зависят от Tauri. Tauri — только desktop host.
+
+## Поток данных
+
+![Как проходит поиск и подготовка списка компаний](docs/flow.svg)
+
+## Части приложения
+
+![Из чего состоит приложение и как его части связаны](docs/architecture.svg)
+
+## Слои
+
+- `crates/domain` — модели, ошибки, `SourceKind`, provenance, теги и настройки поиска.
+- `crates/provider-core` — общий контракт `DirectoryProvider` и консервативная политика запросов.
+- `crates/provider-2gis` — 2GIS public HTML adapter.
+- `crates/provider-public-catalogs` — Yell, Zoon и Rusprofile public HTML adapters.
+- `crates/dedupe` — нормализация телефона/домена/названия и deterministic entity resolution.
+- `crates/storage-sqlite` — canonical leads + неизменяемые исходные записи источников.
+- `crates/export` — CSV/XLSX/JSON с INN/OGRN, источниками и тегами.
+- `crates/application` — оркестрация нескольких источников, soft-fail одного источника, dedupe и persistence.
+- `apps/desktop/src-tauri` — composition root + typed IPC.
+- `apps/desktop/src` — Svelte 5 UI, без внешних HTTP-запросов.
+
+## Дедупликация
+
+Автоматическое объединение только по сильным ключам:
+
+1. ИНН;
+2. ОГРН;
+3. нормализованный телефон;
+4. домен сайта;
+5. нормализованные `название + адрес`.
+
+Одинаковое название без сильного ключа **не склеивается**: записи получают тег `Возможный дубль`. Это защищает филиалы сетей от случайного удаления.
+
+Каждый объединенный lead сохраняет:
+
+- `sources[]` — откуда пришли записи;
+- `branches[]` — найденные адреса/координаты;
+- `tags[]` — источники и статусы дедупликации;
+- `dedupe.mergedRecords` — сколько исходных записей объединено.
+
+## Source provenance
+
+`source_records` хранит исходную нормализованную запись каждого провайдера отдельно от canonical `organizations`. Изменение алгоритма дедупликации не требует повторно обращаться к сайтам.
+
+## Политика запросов
+
+Каждый provider имеет собственные минимальные задержки и максимальную параллельность. Пользователь может сделать режим медленнее, но не быстрее встроенного минимума.
+
+- 2GIS: минимум 650 ms, до 4 параллельных карточек.
+- Yell: минимум 1000 ms, до 2.
+- Zoon: минимум 1500 ms, 1.
+- Rusprofile: минимум 2500 ms, 1.
+
+HTTP 403/429, CAPTCHA и anti-bot страницы не обходятся. Такой provider прекращает работу, а остальные источники могут продолжить сбор.
+
+## Безопасность
+
+- Frontend CSP: только self + Tauri IPC.
+- Нет Chromium/Electron/Playwright/Selenium.
+- Нет чужих API-ключей и токенов.
+- Нет proxy rotation, CAPTCHA solving или обхода rate limit.
+- Frontend не имеет сетевых разрешений к каталогам.

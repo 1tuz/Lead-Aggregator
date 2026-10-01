@@ -1,0 +1,73 @@
+@import 'tailwindcss';
+
+:root {
+  font-family: 'Inter Variable', -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+
+  --bg: #f4f5f7;
+  --panel: rgba(255, 255, 255, 0.82);
+  --panel-solid: #ffffff;
+  --panel-muted: #eef0f3;
+  --fg: #16181d;
+  --muted: #6a717d;
+  --line: rgba(22, 24, 29, 0.1);
+  --accent: #17191d;
+  --accent-fg: #ffffff;
+  --success: #1d7a4c;
+  --warning: #9a6510;
+  --danger: #b42318;
+  --shadow: 0 14px 40px rgba(16, 24, 40, 0.08);
+}
+
+:root[data-theme='graphite'] {
+  --bg: #0f1115;
+  --panel: rgba(24, 27, 33, 0.84);
+  --panel-solid: #181b21;
+  --panel-muted: #20242b;
+  --fg: #f2f4f7;
+  --muted: #9aa2af;
+  --line: rgba(255, 255, 255, 0.09);
+  --accent: #f4f4f5;
+  --accent-fg: #111318;
+  --success: #64d29a;
+  --warning: #e5b567;
+  --danger: #ff8b83;
+  --shadow: 0 16px 44px rgba(0, 0, 0, 0.28);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  min-width: 100%;
+  min-height: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background:
+    radial-gradient(circle at 0% 0%, color-mix(in srgb, var(--panel-solid) 70%, transparent), transparent 42%),
+    var(--bg);
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: default;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--fg) 18%, transparent);
+}

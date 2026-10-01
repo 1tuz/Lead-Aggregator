@@ -1,0 +1,41 @@
+name: Nightly full checks
+
+on:
+  schedule:
+    # 02:00 UTC+3
+    - cron: "0 23 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-full
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt,clippy
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.10.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install frontend dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Rust format
+        run: cargo fmt --all -- --check
+      - name: Rust tests
+        run: cargo test --workspace
+      - name: Rust clippy
+        run: cargo clippy --workspace --all-targets
+      - name: Svelte check
+        run: pnpm check:ui
+      - name: Frontend build
+        run: pnpm --dir apps/desktop build
+      - name: macOS app build
+        run: pnpm --dir apps/desktop tauri build --bundles app,dmg

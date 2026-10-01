@@ -1,0 +1,2826 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index 02b14d3..5d0c5d7 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -12,3 +12,12 @@
+ 10. После изменений: `cargo fmt --all`, `cargo test --workspace`, `cargo clippy --workspace`, `pnpm --dir apps/desktop check`, `pnpm --dir apps/desktop build`.
+ 11. Для больших задач используй независимые подзадачи/субагентов, затем один интеграционный проход.
+ 12. Не добавляй абстракцию «на будущее», пока нет реального второго потребителя.
++
++## Multi-source rules (v0.2)
++
++13. Каждый новый каталог реализует `DirectoryProvider`; не добавляй source-specific условия в application/UI.
++14. Не стирай `source_records`: это provenance и основа повторной дедупликации без сети.
++15. Автосклейка разрешена только по сильным ключам. Не объединяй лиды только по похожему названию.
++16. Сохраняй `sources`, `branches` и source tags при merge.
++17. Provider обязан иметь консервативный `ProviderPolicy` и прекращать работу на CAPTCHA/403/429.
++18. Перед релизом проверь adapters на небольшом live smoke test (1 страница, 3-5 карточек) и обнови fixture-тесты; не пытайся обходить защиту, если источник блокирует автоматические запросы.
+diff --git a/ARCHITECTURE.md b/ARCHITECTURE.md
+index ad63801..48690ff 100644
+--- a/ARCHITECTURE.md
++++ b/ARCHITECTURE.md
+@@ -2,72 +2,79 @@
+ 
+ ## Правило №1
+ 
+-`twogis-domain`, `twogis-application`, `twogis-provider`, `twogis-storage-sqlite` и `twogis-export` не зависят от Tauri. Tauri — только desktop host.
++`domain`, `application`, providers, `dedupe`, `storage-sqlite` и `export` не зависят от Tauri. Tauri — только desktop host.
+ 
+-## Слои
+-
+-### `crates/domain`
+-
+-Модели, ошибки, валидация запросов, прогресс и экспортные форматы. Никаких сетевых/OS/Tauri зависимостей.
+-
+-### `crates/provider-2gis`
++## Поток данных
+ 
+-Реализация `DirectoryProvider`. В v0.1 использует:
+-
+-- `reqwest` для HTTPS;
+-- `scraper` для HTML;
+-- семантические признаки страницы вместо обфусцированных CSS-классов;
+-- ограниченную параллельность и пользовательскую паузу;
+-- явную остановку на 403/429.
++```text
++2GIS ─────────┐
++Yell ─────────┼─> provider adapters ─> raw source_records
++Zoon ─────────┤                         │
++Rusprofile ───┘                         ▼
++                                  normalization
++                                       │
++                                       ▼
++                                  deduplication
++                                       │
++                                       ▼
++                              canonical organizations
++                                       │
++                     ┌─────────────────┴───────────────┐
++                     ▼                                 ▼
++                  SQLite                         CSV/XLSX/JSON
++```
+ 
+-### `crates/storage-sqlite`
++## Слои
+ 
+-`sqlx` + SQLite. Только Rust имеет путь к файлу базы; фронтенд не получает файловых разрешений.
++- `crates/domain` — модели, ошибки, `SourceKind`, provenance, теги и настройки поиска.
++- `crates/provider-core` — общий контракт `DirectoryProvider` и консервативная политика запросов.
++- `crates/provider-2gis` — 2GIS public HTML adapter.
++- `crates/provider-public-catalogs` — Yell, Zoon и Rusprofile public HTML adapters.
++- `crates/dedupe` — нормализация телефона/домена/названия и deterministic entity resolution.
++- `crates/storage-sqlite` — canonical leads + неизменяемые исходные записи источников.
++- `crates/export` — CSV/XLSX/JSON с INN/OGRN, источниками и тегами.
++- `crates/application` — оркестрация нескольких источников, soft-fail одного источника, dedupe и persistence.
++- `apps/desktop/src-tauri` — composition root + typed IPC.
++- `apps/desktop/src` — Svelte 5 UI, без внешних HTTP-запросов.
+ 
+-### `crates/export`
++## Дедупликация
+ 
+-CSV, JSON и XLSX. Выходной файл создается Rust-кодом в Downloads.
++Автоматическое объединение только по сильным ключам:
+ 
+-### `crates/application`
++1. ИНН;
++2. ОГРН;
++3. нормализованный телефон;
++4. домен сайта;
++5. нормализованные `название + адрес`.
+ 
+-Оркестрация сценария: provider → progress → SQLite → summary. Здесь нет Tauri.
++Одинаковое название без сильного ключа **не склеивается**: записи получают тег `Возможный дубль`. Это защищает филиалы сетей от случайного удаления.
+ 
+-### `apps/desktop/src-tauri`
++Каждый объединенный lead сохраняет:
+ 
+-Composition root и команды Tauri. Должен оставаться тонким.
++- `sources[]` — откуда пришли записи;
++- `branches[]` — найденные адреса/координаты;
++- `tags[]` — источники и статусы дедупликации;
++- `dedupe.mergedRecords` — сколько исходных записей объединено.
+ 
+-### `apps/desktop/src`
++## Source provenance
+ 
+-Svelte 5 UI. Не делает внешних HTTP-запросов.
++`source_records` хранит исходную нормализованную запись каждого провайдера отдельно от canonical `organizations`. Изменение алгоритма дедупликации не требует повторно обращаться к сайтам.
+ 
+-## Расширение без рефакторинга
++## Политика запросов
+ 
+-Если прямого HTML станет недостаточно:
++Каждый provider имеет собственные минимальные задержки и максимальную параллельность. Пользователь может сделать режим медленнее, но не быстрее встроенного минимума.
+ 
+-```text
+-DirectoryProvider
+-├── TwoGisHtmlProvider       # текущий
+-└── TwoGisWebKitProvider     # будущий, macOS native WebKit
+-```
++- 2GIS: минимум 650 ms, до 4 параллельных карточек.
++- Yell: минимум 1000 ms, до 2.
++- Zoon: минимум 1500 ms, 1.
++- Rusprofile: минимум 2500 ms, 1.
+ 
+-SQLite, экспорт, доменные модели и UI не меняются.
++HTTP 403/429, CAPTCHA и anti-bot страницы не обходятся. Такой provider прекращает работу, а остальные источники могут продолжить сбор.
+ 
+ ## Безопасность
+ 
+ - Frontend CSP: только self + Tauri IPC.
+-- Нет `shell:*`, `fs:*` и blanket capabilities.
+-- Нет API-ключей/токенов в UI, SQLite или репозитории.
+-- Нет remote WebView с Tauri IPC-разрешениями.
+-- 403/429 не обходятся.
+-
+-## Производительность
+-
+-- Network I/O async (`tokio` + `reqwest`).
+-- Параллельность ограничена `1..=8`, default 2.
+-- Между запросами default 650 ms.
+-- Результаты сохраняются одной SQLite-транзакцией.
+-- UI получает готовые структуры, а не сырой HTML.
+-
+-## Promotion rule
+-
+-Не добавлять универсальный слой заранее. Абстракция переносится в общий слой только когда есть как минимум несколько реальных реализаций/потребителей. Поэтому сейчас нет плагиновой системы, DI-контейнера, Redux-подобного store и отдельного daemon.
++- Нет Chromium/Electron/Playwright/Selenium.
++- Нет чужих API-ключей и токенов.
++- Нет proxy rotation, CAPTCHA solving или обхода rate limit.
++- Frontend не имеет сетевых разрешений к каталогам.
+diff --git a/Cargo.toml b/Cargo.toml
+index 3932f09..b1741ef 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -1,7 +1,10 @@
+ [workspace]
+ members = [
+   "crates/domain",
++  "crates/provider-core",
+   "crates/provider-2gis",
++  "crates/provider-public-catalogs",
++  "crates/dedupe",
+   "crates/storage-sqlite",
+   "crates/export",
+   "crates/application",
+@@ -12,7 +15,7 @@ resolver = "2"
+ [workspace.package]
+ edition = "2024"
+ license = "MIT"
+-version = "0.1.0"
++version = "0.2.0"
+ rust-version = "1.88"
+ 
+ [workspace.dependencies]
+diff --git a/README.md b/README.md
+index 996f77d..4e234bf 100644
+--- a/README.md
++++ b/README.md
+@@ -1,23 +1,25 @@
+-# 2GIS Extractor
++# Lead Aggregator
+ 
+-Небольшое local-first приложение для macOS: поиск организаций в публичной веб-версии 2ГИС, сохранение результатов в SQLite и экспорт в CSV/XLSX/JSON.
++Local-first приложение для macOS: сбор B2B-лидов из нескольких публичных каталогов, умная дедупликация, сохранение происхождения данных в SQLite и экспорт в CSV/XLSX/JSON.
+ 
+-**Неофициальный проект. Не связан с 2ГИС.**
++**Неофициальный проект. Не связан с 2GIS, Yell, Zoon или Rusprofile.**
+ 
+ ## Главное
+ 
+ - Tauri 2 + Rust + Svelte 5.
+ - На macOS интерфейс Tauri использует системный WebKit; Chromium в приложение не встраивается.
+-- Сам сборщик в v0.1 браузер вообще не запускает: Rust читает публично отдаваемый HTML страниц поиска и карточек через `reqwest`.
+-- API-ключ 2ГИС не требуется.
+-- Никакого обхода антибот-защиты: при HTTP 403/429 сбор останавливается.
++- Сборщики браузер не запускают: Rust читает публично отдаваемый HTML через `reqwest`.
++- Источники v0.2: 2GIS, Yell, Zoon, Rusprofile.
++- Дедупликация по ИНН/ОГРН/телефону/домену/названию+адресу.
++- Для каждого лида сохраняются источники и теги.
++- Никакого обхода антибот-защиты: при HTTP 403/429/CAPTCHA конкретный источник останавливается.
+ - SQLite локально, без облачной базы.
+ - CSV, XLSX и JSON.
+ - Тонкий Tauri-хост; доменная логика тестируется без запуска GUI.
+ 
+ ## Что собирается
+ 
+-Название, категория, адрес, рейтинг/количество оценок, телефон (если он присутствует в отдаваемом HTML), email, сайт, соцсети, статус работы, координаты (если присутствуют в странице), URL карточки.
++Название, категория, адреса/филиалы, рейтинг, телефоны, email, сайт, соцсети, ИНН/ОГРН (когда источник их публикует), координаты, URL карточек, provenance и теги дедупликации.
+ 
+ 2ГИС может скрывать часть контактов до пользовательского действия. В таком случае поле останется пустым. Архитектура специально разделена так, чтобы позже добавить **нативный WebKit-enricher** для таких полей, не трогая GUI, SQLite и экспорт.
+ 
+diff --git a/apps/desktop/src-tauri/Cargo.toml b/apps/desktop/src-tauri/Cargo.toml
+index 3b8f830..d171b53 100644
+--- a/apps/desktop/src-tauri/Cargo.toml
++++ b/apps/desktop/src-tauri/Cargo.toml
+@@ -24,6 +24,8 @@ tokio-util.workspace = true
+ twogis-application = { path = "../../../crates/application" }
+ twogis-domain = { path = "../../../crates/domain" }
+ twogis-provider = { path = "../../../crates/provider-2gis" }
++twogis-provider-core = { path = "../../../crates/provider-core" }
++twogis-provider-public-catalogs = { path = "../../../crates/provider-public-catalogs" }
+ twogis-storage-sqlite = { path = "../../../crates/storage-sqlite" }
+ 
+ [lints]
+diff --git a/apps/desktop/src-tauri/src/commands.rs b/apps/desktop/src-tauri/src/commands.rs
+index fd2b5d5..ab28f78 100644
+--- a/apps/desktop/src-tauri/src/commands.rs
++++ b/apps/desktop/src-tauri/src/commands.rs
+@@ -7,7 +7,7 @@ use twogis_domain::{
+     AppError, ExportFormat, ExportReceipt, HealthInfo, Organization, RunSummary, ScrapeProgress,
+     SearchRequest,
+ };
+-use twogis_provider::ProgressSink;
++use twogis_provider_core::ProgressSink;
+ 
+ use crate::state::AppState;
+ 
+@@ -82,7 +82,7 @@ pub async fn export_results(
+         ExportFormat::Json => "json",
+         ExportFormat::Xlsx => "xlsx",
+     };
+-    let filename = format!("2gis-export-{}.{}", Utc::now().format("%Y%m%d-%H%M%S"), extension);
++    let filename = format!("lead-export-{}.{}", Utc::now().format("%Y%m%d-%H%M%S"), extension);
+     let path = dir.join(filename);
+     let rows = state.service.export_recent(&path, format, limit).await?;
+     Ok(ExportReceipt {
+@@ -97,8 +97,9 @@ pub async fn export_results(
+ pub fn health(state: State<'_, AppState>) -> HealthInfo {
+     HealthInfo {
+         app_version: env!("CARGO_PKG_VERSION").into(),
+-        provider: state.service.provider_id().into(),
++        provider: state.service.provider_id(),
+         browser_engine: "none (Rust HTTP; Tauri UI uses system WebKit)".into(),
+         api_key_required: false,
++        available_sources: state.service.available_sources(),
+     }
+ }
+diff --git a/apps/desktop/src-tauri/src/lib.rs b/apps/desktop/src-tauri/src/lib.rs
+index 21fbb3c..5cdb48e 100644
+--- a/apps/desktop/src-tauri/src/lib.rs
++++ b/apps/desktop/src-tauri/src/lib.rs
+@@ -5,10 +5,12 @@ use std::{fs, sync::Arc};
+ 
+ use specta_typescript::Typescript;
+ use tauri::{Manager, Wry};
+-use tauri_specta::{collect_commands, Builder};
++use tauri_specta::{Builder, collect_commands};
+ use twogis_application::ApplicationService;
+ use twogis_domain::AppError;
+ use twogis_provider::TwoGisHtmlProvider;
++use twogis_provider_core::DirectoryProvider;
++use twogis_provider_public_catalogs::{RusprofileHtmlProvider, YellHtmlProvider, ZoonHtmlProvider};
+ use twogis_storage_sqlite::SqliteStore;
+ 
+ use crate::{
+@@ -43,13 +45,16 @@ pub fn run() {
+             let app_data = handle.path().app_data_dir()?;
+             fs::create_dir_all(&app_data)?;
+             let db_path = app_data.join("twogis-extractor.db");
+-            let provider = Arc::new(
+-                TwoGisHtmlProvider::new()
+-                    .map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))?,
+-            );
++
++            let providers: Vec<Arc<dyn DirectoryProvider>> = vec![
++                Arc::new(TwoGisHtmlProvider::new().map_err(as_setup_error)?),
++                Arc::new(YellHtmlProvider::new().map_err(as_setup_error)?),
++                Arc::new(ZoonHtmlProvider::new().map_err(as_setup_error)?),
++                Arc::new(RusprofileHtmlProvider::new().map_err(as_setup_error)?),
++            ];
+             let store = tauri::async_runtime::block_on(SqliteStore::connect(&db_path))
+-                .map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))?;
+-            let service = Arc::new(ApplicationService::new(provider, store));
++                .map_err(as_setup_error)?;
++            let service = Arc::new(ApplicationService::new(providers, store));
+             app.manage(AppState {
+                 app: handle,
+                 service,
+@@ -61,5 +66,9 @@ pub fn run() {
+         .expect("error while running Tauri application");
+ }
+ 
++fn as_setup_error(error: AppError) -> Box<dyn std::error::Error> {
++    Box::<dyn std::error::Error>::from(error.to_string())
++}
++
+ #[allow(dead_code)]
+ fn _assert_error_is_serializable(_: AppError) {}
+diff --git a/apps/desktop/src-tauri/tauri.conf.json b/apps/desktop/src-tauri/tauri.conf.json
+index 550c763..1e10692 100644
+--- a/apps/desktop/src-tauri/tauri.conf.json
++++ b/apps/desktop/src-tauri/tauri.conf.json
+@@ -1,7 +1,7 @@
+ {
+   "$schema": "https://schema.tauri.app/config/2",
+-  "productName": "2GIS Extractor",
+-  "version": "0.1.0",
++  "productName": "Lead Aggregator",
++  "version": "0.2.0",
+   "identifier": "dev.local.twogis-extractor",
+   "build": {
+     "beforeDevCommand": "pnpm dev",
+@@ -13,7 +13,7 @@
+     "windows": [
+       {
+         "label": "main",
+-        "title": "2GIS Extractor",
++        "title": "Lead Aggregator",
+         "width": 1180,
+         "height": 760,
+         "minWidth": 920,
+@@ -29,10 +29,13 @@
+   },
+   "bundle": {
+     "active": true,
+-    "targets": ["app", "dmg"],
++    "targets": [
++      "app",
++      "dmg"
++    ],
+     "category": "Utility",
+-    "shortDescription": "Local-first 2GIS organization extractor",
+-    "longDescription": "A lightweight local-first desktop tool that extracts organization data from public 2GIS HTML without bundling Chromium or requiring a 2GIS API key.",
++    "shortDescription": "Local-first multi-source lead aggregator",
++    "longDescription": "A lightweight local-first macOS tool that aggregates public business directory data, preserves source provenance, deduplicates leads, stores them in SQLite, and exports CSV/XLSX/JSON without bundling Chromium.",
+     "macOS": {
+       "minimumSystemVersion": "13.0"
+     }
+diff --git a/apps/desktop/src/App.svelte b/apps/desktop/src/App.svelte
+index 471f572..fc28d02 100644
+--- a/apps/desktop/src/App.svelte
++++ b/apps/desktop/src/App.svelte
+@@ -1,24 +1,16 @@
+ <script lang="ts">
+   import { listen } from '@tauri-apps/api/event';
+-  import {
+-    CircleStop,
+-    Database,
+-    Download,
+-    Moon,
+-    Play,
+-    Search,
+-    ShieldCheck,
+-    Sun,
+-  } from 'lucide-svelte';
++  import { CircleStop, Database, Download, Moon, Play, Search, ShieldCheck, Sun } from 'lucide-svelte';
+   import { onMount } from 'svelte';
+-  import { api, errorMessage, type ExportFormat, type HealthInfo, type Organization } from './lib/ipc';
++  import { api, errorMessage, type ExportFormat, type HealthInfo, type Organization, type SourceKind } from './lib/ipc';
+ 
+-  type Progress = {
+-    phase: 'discovering' | 'enriching' | 'saving' | 'done';
+-    current: number;
+-    total: number | null;
+-    message: string;
+-  };
++  type Progress = { phase: 'discovering' | 'enriching' | 'resolving' | 'saving' | 'done'; current: number; total: number | null; message: string };
++  const sourceOptions: { id: SourceKind; label: string; note: string }[] = [
++    { id: 'twoGis', label: '2GIS', note: 'локальный бизнес' },
++    { id: 'yell', label: 'Yell', note: 'каталог компаний' },
++    { id: 'zoon', label: 'Zoon', note: 'услуги и малый бизнес' },
++    { id: 'rusprofile', label: 'Rusprofile', note: 'юрлица и реквизиты' },
++  ];
+ 
+   let region = 'moscow';
+   let query = 'автосервис';
+@@ -26,6 +18,7 @@
+   let maxPages = 5;
+   let concurrency = 2;
+   let delay = 650;
++  let selectedSources: SourceKind[] = ['twoGis', 'yell'];
+   let rows: Organization[] = [];
+   let warnings: string[] = [];
+   let running = false;
+@@ -35,78 +28,46 @@
+   let health: HealthInfo | null = null;
+   let theme: 'frost' | 'graphite' = 'frost';
+ 
+-
+   onMount(() => {
+     const storedTheme = localStorage.getItem('theme');
+     if (storedTheme === 'graphite') theme = 'graphite';
+     applyTheme();
+-
+     void api.health().then((value) => (health = value)).catch(() => undefined);
+     void api.recentResults(300).then((value) => (rows = value)).catch(() => undefined);
+-
+     const unlisten = listen<Progress>('scrape-progress', ({ payload }) => {
+       message = payload.message;
+-      if (payload.total && payload.total > 0) {
+-        progress = Math.min(100, Math.round((payload.current / payload.total) * 100));
+-      } else if (payload.phase === 'done') {
+-        progress = 100;
+-      }
++      if (payload.total && payload.total > 0) progress = Math.min(100, Math.round((payload.current / payload.total) * 100));
++      else if (payload.phase === 'done') progress = 100;
+     });
+-    return () => {
+-      void unlisten.then((fn) => fn());
+-    };
++    return () => { void unlisten.then((fn) => fn()); };
+   });
+ 
+   function applyTheme() {
+     document.documentElement.dataset.theme = theme === 'graphite' ? 'graphite' : '';
+     localStorage.setItem('theme', theme);
+   }
+-
+-  function toggleTheme() {
+-    theme = theme === 'frost' ? 'graphite' : 'frost';
+-    applyTheme();
++  function toggleTheme() { theme = theme === 'frost' ? 'graphite' : 'frost'; applyTheme(); }
++  function toggleSource(source: SourceKind) {
++    selectedSources = selectedSources.includes(source)
++      ? selectedSources.filter((item) => item !== source)
++      : [...selectedSources, source];
+   }
++  function sourceLabel(source: SourceKind) { return sourceOptions.find((item) => item.id === source)?.label ?? source; }
+ 
+   async function runSearch() {
+-    running = true;
+-    error = '';
+-    warnings = [];
+-    progress = 1;
+-    message = 'Запуск поиска';
++    running = true; error = ''; warnings = []; progress = 1; message = 'Запуск поиска';
+     try {
+-      const summary = await api.startSearch({
+-        region,
+-        query,
+-        maxResults,
+-        maxPages,
+-        concurrency,
+-        requestDelayMs: delay,
+-      });
+-      rows = summary.organizations;
+-      warnings = summary.warnings;
+-      progress = 100;
+-      message = `Собрано: ${rows.length}`;
+-    } catch (e) {
+-      error = errorMessage(e);
+-      message = 'Поиск остановлен';
+-    } finally {
+-      running = false;
+-    }
++      const summary = await api.startSearch({ region, query, maxResults, maxPages, concurrency, requestDelayMs: delay, sources: selectedSources });
++      rows = summary.organizations; warnings = summary.warnings; progress = 100;
++      message = `Уникальных лидов: ${rows.length} · исходных записей: ${summary.rawRecords} · объединено: ${summary.duplicatesMerged}`;
++    } catch (e) { error = errorMessage(e); message = 'Поиск остановлен'; }
++    finally { running = false; }
+   }
+-
+-  async function cancelSearch() {
+-    await api.cancelSearch();
+-    message = 'Остановка…';
+-  }
+-
++  async function cancelSearch() { await api.cancelSearch(); message = 'Остановка…'; }
+   async function exportRows(format: ExportFormat) {
+     error = '';
+-    try {
+-      const receipt = await api.exportResults(format, 5000);
+-      message = `Экспортировано ${receipt.rows}: ${receipt.path}`;
+-    } catch (e) {
+-      error = errorMessage(e);
+-    }
++    try { const receipt = await api.exportResults(format, 5000); message = `Экспортировано ${receipt.rows}: ${receipt.path}`; }
++    catch (e) { error = errorMessage(e); }
+   }
+ </script>
+ 
+@@ -114,74 +75,49 @@
+   <aside class="sidebar">
+     <div class="brand">
+       <div class="brand-mark"><Search size={17} strokeWidth={2.2} /></div>
+-      <div>
+-        <strong>2GIS Extractor</strong>
+-        <span>local-first · Rust</span>
+-      </div>
++      <div><strong>Lead Aggregator</strong><span>local-first · Rust</span></div>
+     </div>
+ 
+     <div class="form-section">
+-      <label>
+-        <span>Город / slug</span>
+-        <input bind:value={region} placeholder="moscow" disabled={running} />
+-      </label>
+-      <label>
+-        <span>Что искать</span>
+-        <input bind:value={query} placeholder="автосервис" disabled={running} />
+-      </label>
++      <label><span>Город / slug</span><input bind:value={region} placeholder="moscow" disabled={running} /></label>
++      <label><span>Что искать</span><input bind:value={query} placeholder="автосервис" disabled={running} /></label>
++
++      <div class="source-block">
++        <span class="field-title">Источники</span>
++        {#each sourceOptions as source}
++          <label class="source-row">
++            <input type="checkbox" checked={selectedSources.includes(source.id)} onchange={() => toggleSource(source.id)} disabled={running || (health ? !health.availableSources.includes(source.id) : false)} />
++            <span><strong>{source.label}</strong><small>{source.note}</small></span>
++          </label>
++        {/each}
++      </div>
++
+       <div class="field-grid">
+-        <label>
+-          <span>Макс. компаний</span>
+-          <input type="number" min="1" max="5000" bind:value={maxResults} disabled={running} />
+-        </label>
+-        <label>
+-          <span>Страниц</span>
+-          <input type="number" min="1" max="100" bind:value={maxPages} disabled={running} />
+-        </label>
++        <label><span>Макс. на источник</span><input type="number" min="1" max="5000" bind:value={maxResults} disabled={running} /></label>
++        <label><span>Страниц</span><input type="number" min="1" max="100" bind:value={maxPages} disabled={running} /></label>
+       </div>
+       <div class="field-grid">
+-        <label>
+-          <span>Параллельно</span>
+-          <input type="number" min="1" max="8" bind:value={concurrency} disabled={running} />
+-        </label>
+-        <label>
+-          <span>Пауза, мс</span>
+-          <input type="number" min="250" step="50" bind:value={delay} disabled={running} />
+-        </label>
++        <label><span>Параллельно</span><input type="number" min="1" max="8" bind:value={concurrency} disabled={running} /></label>
++        <label><span>Пауза, мс</span><input type="number" min="250" step="50" bind:value={delay} disabled={running} /></label>
+       </div>
+ 
+       {#if running}
+-        <button class="primary danger" onclick={cancelSearch}>
+-          <CircleStop size={16} /> Остановить
+-        </button>
++        <button class="primary danger" onclick={cancelSearch}><CircleStop size={16} /> Остановить</button>
+       {:else}
+-        <button class="primary" onclick={runSearch} disabled={!query.trim() || !region.trim()}>
+-          <Play size={16} fill="currentColor" /> Начать сбор
+-        </button>
++        <button class="primary" onclick={runSearch} disabled={!query.trim() || !region.trim() || selectedSources.length === 0}><Play size={16} fill="currentColor" /> Собрать лиды</button>
+       {/if}
+     </div>
+ 
+-    <div class="side-note">
+-      <ShieldCheck size={15} />
+-      <span>Без API-ключа и Chromium. При 403/429 приложение останавливается, а не обходит защиту.</span>
+-    </div>
+-
++    <div class="side-note"><ShieldCheck size={15} /><span>Публичные страницы, без Chromium. На CAPTCHA, 403 и 429 источник останавливается без обхода защиты.</span></div>
+     <div class="sidebar-footer">
+-      <button class="icon-button" onclick={toggleTheme} title="Сменить тему">
+-        {#if theme === 'frost'}<Moon size={16} />{:else}<Sun size={16} />{/if}
+-      </button>
+-      {#if health}
+-        <span>{health.provider}</span>
+-      {/if}
++      <button class="icon-button" onclick={toggleTheme} title="Сменить тему">{#if theme === 'frost'}<Moon size={16} />{:else}<Sun size={16} />{/if}</button>
++      <span>{health ? `${health.availableSources.length} источника` : 'Rust'}</span>
+     </div>
+   </aside>
+ 
+   <main class="content">
+     <header class="topbar">
+-      <div>
+-        <h1>Организации</h1>
+-        <p>{message}</p>
+-      </div>
++      <div><h1>Лиды</h1><p>{message}</p></div>
+       <div class="actions">
+         <button onclick={() => exportRows('csv')} disabled={rows.length === 0 || running}><Download size={15} /> CSV</button>
+         <button onclick={() => exportRows('xlsx')} disabled={rows.length === 0 || running}><Download size={15} /> XLSX</button>
+@@ -189,105 +125,75 @@
+       </div>
+     </header>
+ 
+-    <div class="progress-track" aria-label="Прогресс">
+-      <div class="progress-value" style={`width: ${progress}%`}></div>
+-    </div>
+-
+-    {#if error}
+-      <div class="notice error">{error}</div>
+-    {/if}
+-    {#if warnings.length > 0}
+-      <div class="notice warning">{warnings.length} карточек не удалось разобрать полностью.</div>
+-    {/if}
++    <div class="progress-track" aria-label="Прогресс"><div class="progress-value" style={`width: ${progress}%`}></div></div>
++    {#if error}<div class="notice error">{error}</div>{/if}
++    {#if warnings.length > 0}<div class="notice warning">Предупреждений источников: {warnings.length}. Первый: {warnings[0]}</div>{/if}
+ 
+     <section class="stats">
+-      <div><Database size={16} /><strong>{rows.length}</strong><span>в таблице</span></div>
++      <div><Database size={16} /><strong>{rows.length}</strong><span>уникальных</span></div>
+       <div><strong>{rows.filter((r) => r.phones.length > 0).length}</strong><span>с телефоном</span></div>
+-      <div><strong>{rows.filter((r) => r.website).length}</strong><span>с сайтом</span></div>
+-      <div><strong>{rows.filter((r) => r.email).length}</strong><span>с почтой</span></div>
++      <div><strong>{rows.filter((r) => r.sources.length > 1).length}</strong><span>из 2+ источников</span></div>
++      <div><strong>{rows.filter((r) => r.dedupe.possibleDuplicate).length}</strong><span>возможных дублей</span></div>
+     </section>
+ 
+-    <section class="table-card">
+-      <div class="table-scroll">
+-        <table>
+-          <thead>
++    <section class="table-card"><div class="table-scroll"><table>
++      <thead><tr><th>Компания</th><th>Источники</th><th>Адрес</th><th>Телефон</th><th>ИНН</th><th>Сайт / почта</th><th>Метки</th></tr></thead>
++      <tbody>
++        {#if rows.length === 0}
++          <tr class="empty-row"><td colspan="7">Запусти поиск или дождись загрузки сохранённых результатов.</td></tr>
++        {:else}
++          {#each rows as row (row.id)}
+             <tr>
+-              <th>Компания</th>
+-              <th>Категория</th>
+-              <th>Адрес</th>
+-              <th>Рейтинг</th>
+-              <th>Телефон</th>
+-              <th>Сайт</th>
++              <td><strong>{row.name}</strong><small class="subline">{row.category ?? '—'}</small></td>
++              <td><div class="chips">{#each row.sources as source}<span class="chip">{sourceLabel(source.source)}</span>{/each}</div></td>
++              <td class="address">{row.address ?? '—'}</td>
++              <td>{row.phones[0] ?? '—'}</td>
++              <td>{row.inn ?? '—'}</td>
++              <td>{row.website ?? row.email ?? '—'}</td>
++              <td><div class="chips">{#each row.tags.slice(0, 3) as tag}<span class:warn-chip={tag === 'Возможный дубль'} class="chip">{tag}</span>{/each}</div></td>
+             </tr>
+-          </thead>
+-          <tbody>
+-            {#if rows.length === 0}
+-              <tr class="empty-row"><td colspan="6">Запусти поиск или дождись загрузки сохранённых результатов.</td></tr>
+-            {:else}
+-              {#each rows as row (row.id)}
+-                <tr>
+-                  <td><strong>{row.name}</strong></td>
+-                  <td>{row.category ?? '—'}</td>
+-                  <td class="address">{row.address ?? '—'}</td>
+-                  <td>{row.rating ? `${row.rating.toFixed(1)} · ${row.reviewCount ?? 0}` : '—'}</td>
+-                  <td>{row.phones[0] ?? '—'}</td>
+-                  <td>{row.website ?? row.email ?? '—'}</td>
+-                </tr>
+-              {/each}
+-            {/if}
+-          </tbody>
+-        </table>
+-      </div>
+-    </section>
++          {/each}
++        {/if}
++      </tbody>
++    </table></div></section>
+   </main>
+ </div>
+ 
+ <style>
+-  .shell { display: grid; grid-template-columns: 292px minmax(0, 1fr); height: 100%; padding: 12px; gap: 12px; }
+-  .sidebar, .content { border: 1px solid var(--line); background: var(--panel); backdrop-filter: blur(24px) saturate(130%); box-shadow: var(--shadow); }
+-  .sidebar { border-radius: 18px; padding: 16px; display: flex; flex-direction: column; min-height: 0; }
+-  .content { border-radius: 18px; min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+-  .brand { display: flex; gap: 10px; align-items: center; padding: 2px 2px 18px; border-bottom: 1px solid var(--line); }
+-  .brand-mark { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; color: var(--accent-fg); background: var(--accent); }
+-  .brand strong, .brand span { display: block; }
+-  .brand strong { font-size: 13px; letter-spacing: -0.01em; }
+-  .brand span { color: var(--muted); font-size: 10px; margin-top: 2px; }
+-  .form-section { display: grid; gap: 12px; padding-top: 18px; }
+-  label span { display: block; color: var(--muted); font-size: 10px; font-weight: 650; margin: 0 0 6px 2px; text-transform: uppercase; letter-spacing: 0.055em; }
+-  input { width: 100%; height: 36px; border: 1px solid var(--line); background: var(--panel-solid); color: var(--fg); border-radius: 9px; padding: 0 10px; outline: none; transition: border 120ms ease, box-shadow 120ms ease; }
+-  input:focus { border-color: color-mix(in srgb, var(--fg) 28%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--fg) 7%, transparent); }
+-  .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+-  button { height: 34px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-solid); color: var(--fg); padding: 0 11px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; font-size: 12px; font-weight: 600; }
+-  button:disabled { opacity: .45; }
+-  button:not(:disabled):active { transform: translateY(1px); }
+-  .primary { margin-top: 4px; width: 100%; height: 38px; background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+-  .danger { background: color-mix(in srgb, var(--danger) 86%, #111); color: white; }
+-  .side-note { margin-top: 14px; display: flex; align-items: flex-start; gap: 8px; color: var(--muted); font-size: 10.5px; line-height: 1.45; padding: 10px; border-radius: 10px; background: var(--panel-muted); }
+-  .side-note :global(svg) { flex: 0 0 auto; margin-top: 1px; }
+-  .sidebar-footer { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 10px; }
+-  .icon-button { width: 32px; padding: 0; }
+-  .topbar { display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 18px 20px 14px; }
+-  h1 { font-size: 18px; line-height: 1.1; letter-spacing: -0.025em; margin: 0; }
+-  .topbar p { color: var(--muted); font-size: 11px; margin: 5px 0 0; max-width: 640px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+-  .actions { display: flex; gap: 6px; }
+-  .progress-track { height: 2px; background: var(--panel-muted); }
+-  .progress-value { height: 100%; background: var(--accent); transition: width 180ms ease; }
+-  .notice { margin: 12px 18px 0; border-radius: 9px; padding: 9px 11px; font-size: 11px; border: 1px solid var(--line); }
+-  .notice.error { color: var(--danger); background: color-mix(in srgb, var(--danger) 7%, var(--panel-solid)); }
+-  .notice.warning { color: var(--warning); background: color-mix(in srgb, var(--warning) 7%, var(--panel-solid)); }
+-  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding: 14px 18px; }
+-  .stats > div { min-width: 0; height: 54px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel-solid); padding: 10px 12px; display: flex; align-items: center; gap: 7px; }
+-  .stats strong { font-size: 17px; letter-spacing: -0.04em; }
+-  .stats span { color: var(--muted); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+-  .table-card { min-height: 0; flex: 1; margin: 0 18px 18px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--panel-solid); }
+-  .table-scroll { width: 100%; height: 100%; overflow: auto; }
+-  table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 11px; }
+-  th { position: sticky; top: 0; z-index: 1; background: color-mix(in srgb, var(--panel-solid) 94%, var(--panel-muted)); color: var(--muted); text-align: left; font-size: 9px; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; }
+-  th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+-  th:nth-child(1) { width: 22%; } th:nth-child(2) { width: 16%; } th:nth-child(3) { width: 25%; } th:nth-child(4) { width: 12%; } th:nth-child(5) { width: 13%; } th:nth-child(6) { width: 17%; }
+-  tbody tr:hover { background: color-mix(in srgb, var(--fg) 3%, transparent); }
+-  td a { color: var(--fg); font-weight: 650; text-decoration: none; }
+-  td.address { color: var(--muted); }
+-  .empty-row td { text-align: center; color: var(--muted); padding: 48px 16px; }
+-  @media (max-width: 980px) { .shell { grid-template-columns: 252px minmax(0, 1fr); } .stats { grid-template-columns: repeat(2, 1fr); } th:nth-child(2), td:nth-child(2) { display:none; } }
++  .shell { display:grid; grid-template-columns:300px minmax(0,1fr); height:100%; padding:12px; gap:12px; }
++  .sidebar,.content { border:1px solid var(--line); background:var(--panel); backdrop-filter:blur(24px) saturate(130%); box-shadow:var(--shadow); }
++  .sidebar { border-radius:18px; padding:16px; display:flex; flex-direction:column; min-height:0; overflow:auto; }
++  .content { border-radius:18px; min-width:0; min-height:0; overflow:hidden; display:flex; flex-direction:column; }
++  .brand { display:flex; gap:10px; align-items:center; padding:2px 2px 18px; border-bottom:1px solid var(--line); }
++  .brand-mark { width:34px; height:34px; display:grid; place-items:center; border-radius:10px; color:var(--accent-fg); background:var(--accent); }
++  .brand strong,.brand span { display:block; } .brand strong { font-size:13px; } .brand span { color:var(--muted); font-size:10px; margin-top:2px; }
++  .form-section { display:grid; gap:12px; padding-top:18px; }
++  label>span,.field-title { display:block; color:var(--muted); font-size:10px; font-weight:650; margin:0 0 6px 2px; text-transform:uppercase; letter-spacing:.055em; }
++  input[type='text'], input[type='number'], label>input:not([type]) { width:100%; }
++  input { height:36px; border:1px solid var(--line); background:var(--panel-solid); color:var(--fg); border-radius:9px; padding:0 10px; outline:none; }
++  input:focus { border-color:color-mix(in srgb,var(--fg) 28%,transparent); box-shadow:0 0 0 3px color-mix(in srgb,var(--fg) 7%,transparent); }
++  .field-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
++  .source-block { border:1px solid var(--line); background:var(--panel-muted); border-radius:11px; padding:10px; display:grid; gap:6px; }
++  .source-row { display:flex; gap:8px; align-items:center; min-height:30px; }
++  .source-row input { width:15px; height:15px; padding:0; }
++  .source-row span { margin:0; text-transform:none; letter-spacing:0; display:flex; align-items:baseline; justify-content:space-between; gap:8px; width:100%; }
++  .source-row strong { color:var(--fg); font-size:11px; } .source-row small { color:var(--muted); font-size:9px; }
++  button { height:34px; border:1px solid var(--line); border-radius:9px; background:var(--panel-solid); color:var(--fg); padding:0 11px; display:inline-flex; align-items:center; justify-content:center; gap:7px; font-size:12px; font-weight:600; }
++  button:disabled { opacity:.45; } button:not(:disabled):active { transform:translateY(1px); }
++  .primary { margin-top:4px; width:100%; height:38px; background:var(--accent); color:var(--accent-fg); border-color:transparent; }
++  .danger { background:color-mix(in srgb,var(--danger) 86%,#111); color:white; }
++  .side-note { margin-top:14px; display:flex; align-items:flex-start; gap:8px; color:var(--muted); font-size:10.5px; line-height:1.45; padding:10px; border-radius:10px; background:var(--panel-muted); }
++  .sidebar-footer { margin-top:auto; padding-top:14px; border-top:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; color:var(--muted); font-size:10px; }
++  .icon-button { width:32px; padding:0; }
++  .topbar { display:flex; justify-content:space-between; gap:16px; align-items:center; padding:18px 20px 14px; }
++  h1 { font-size:18px; line-height:1.1; letter-spacing:-.025em; margin:0; } .topbar p { color:var(--muted); font-size:11px; margin:5px 0 0; max-width:700px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
++  .actions { display:flex; gap:6px; }.progress-track { height:2px; background:var(--panel-muted); }.progress-value { height:100%; background:var(--accent); transition:width 180ms ease; }
++  .notice { margin:12px 18px 0; border-radius:9px; padding:9px 11px; font-size:11px; border:1px solid var(--line); }.notice.error { color:var(--danger); }.notice.warning { color:var(--warning); }
++  .stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; padding:14px 18px; }.stats>div { min-width:0; height:54px; border:1px solid var(--line); border-radius:11px; background:var(--panel-solid); padding:10px 12px; display:flex; align-items:center; gap:7px; }.stats strong { font-size:17px; }.stats span { color:var(--muted); font-size:10px; }
++  .table-card { min-height:0; flex:1; margin:0 18px 18px; border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--panel-solid); }.table-scroll { width:100%; height:100%; overflow:auto; }
++  table { width:100%; border-collapse:collapse; table-layout:fixed; font-size:11px; } th { position:sticky; top:0; z-index:1; background:color-mix(in srgb,var(--panel-solid) 94%,var(--panel-muted)); color:var(--muted); text-align:left; font-size:9px; letter-spacing:.06em; text-transform:uppercase; font-weight:700; }
++  th,td { padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:middle; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } th:nth-child(1){width:20%} th:nth-child(2){width:13%} th:nth-child(3){width:20%} th:nth-child(4){width:13%} th:nth-child(5){width:11%} th:nth-child(6){width:14%} th:nth-child(7){width:16%}
++  tbody tr:hover { background:color-mix(in srgb,var(--fg) 3%,transparent); }.address { color:var(--muted); }.empty-row td { text-align:center; color:var(--muted); padding:48px 16px; }
++  .subline { display:block; color:var(--muted); margin-top:3px; overflow:hidden; text-overflow:ellipsis; }.chips { display:flex; gap:4px; overflow:hidden; }.chip { display:inline-flex; height:20px; align-items:center; border:1px solid var(--line); border-radius:999px; padding:0 7px; font-size:9px; background:var(--panel-muted); }.warn-chip { color:var(--warning); }
++  @media (max-width:980px){.shell{grid-template-columns:260px minmax(0,1fr)}.stats{grid-template-columns:repeat(2,1fr)}th:nth-child(5),td:nth-child(5){display:none}}
+ </style>
+diff --git a/apps/desktop/src/bindings.ts b/apps/desktop/src/bindings.ts
+index 0a30ecc..729bb56 100644
+--- a/apps/desktop/src/bindings.ts
++++ b/apps/desktop/src/bindings.ts
+@@ -1,76 +1,56 @@
+-// Seed bindings for a fresh clone. In debug builds tauri-specta regenerates this file
+-// from Rust commands, keeping Rust as the source of truth.
++// Seed bindings for a fresh clone. In debug builds tauri-specta regenerates this file.
+ import { invoke as TAURI_INVOKE } from '@tauri-apps/api/core';
+ 
+ export type ErrorKind =
+-  | 'validation'
+-  | 'network'
+-  | 'rateLimited'
+-  | 'blocked'
+-  | 'parse'
+-  | 'storage'
+-  | 'export'
+-  | 'cancelled'
+-  | 'internal';
+-
++  | 'validation' | 'network' | 'rateLimited' | 'blocked' | 'parse'
++  | 'storage' | 'export' | 'cancelled' | 'internal';
+ export type AppError = { kind: ErrorKind; message: string; retryable: boolean };
++export type SourceKind = 'twoGis' | 'yell' | 'zoon' | 'rusprofile';
+ export type SearchRequest = {
+-  region: string;
+-  query: string;
+-  maxResults: number;
+-  maxPages: number;
+-  concurrency: number;
+-  requestDelayMs: number;
++  region: string; query: string; maxResults: number; maxPages: number;
++  concurrency: number; requestDelayMs: number; sources: SourceKind[];
++};
++export type SourceAttribution = {
++  source: SourceKind; sourceId: string; sourceUrl: string; collectedAt: string;
++};
++export type LeadBranch = {
++  address: string; latitude: number | null; longitude: number | null; source: SourceKind;
++};
++export type DedupeInfo = {
++  mergedRecords: number; fingerprint: string; possibleDuplicate: boolean;
+ };
+ export type Organization = {
+-  id: string;
+-  name: string;
+-  category: string | null;
+-  address: string | null;
+-  rating: number | null;
+-  reviewCount: number | null;
+-  phones: string[];
+-  email: string | null;
+-  website: string | null;
+-  socials: string[];
+-  openingStatus: string | null;
+-  latitude: number | null;
+-  longitude: number | null;
+-  sourceUrl: string;
+-  collectedAt: string;
++  id: string; name: string; category: string | null; address: string | null;
++  rating: number | null; reviewCount: number | null; phones: string[];
++  email: string | null; website: string | null; socials: string[];
++  openingStatus: string | null; latitude: number | null; longitude: number | null;
++  sourceUrl: string; collectedAt: string; inn: string | null; ogrn: string | null;
++  sources: SourceAttribution[]; tags: string[]; branches: LeadBranch[]; dedupe: DedupeInfo;
+ };
+ export type RunSummary = {
+-  runId: string;
+-  startedAt: string;
+-  finishedAt: string;
+-  organizations: Organization[];
+-  warnings: string[];
++  runId: string; startedAt: string; finishedAt: string; organizations: Organization[];
++  warnings: string[]; rawRecords: number; duplicatesMerged: number;
+ };
+ export type ExportFormat = 'csv' | 'json' | 'xlsx';
+ export type ExportReceipt = { path: string; rows: number; format: ExportFormat };
+ export type HealthInfo = {
+-  appVersion: string;
+-  provider: string;
+-  browserEngine: string;
+-  apiKeyRequired: boolean;
++  appVersion: string; provider: string; browserEngine: string; apiKeyRequired: boolean;
++  availableSources: SourceKind[];
+ };
+ export type Result<T, E> = { status: 'ok'; data: T } | { status: 'error'; error: E };
+ 
+ async function invokeResult<T>(command: string, args?: Record<string, unknown>): Promise<Result<T, AppError>> {
+-  try {
+-    return { status: 'ok', data: await TAURI_INVOKE<T>(command, args) };
+-  } catch (error) {
++  try { return { status: 'ok', data: await TAURI_INVOKE<T>(command, args) }; }
++  catch (error) {
+     if (error instanceof Error) throw error;
+     return { status: 'error', error: error as AppError };
+   }
+ }
+ 
+ export const commands = {
+-  startSearch: (request: SearchRequest) =>
+-    invokeResult<RunSummary>('start_search', { request }),
++  startSearch: (request: SearchRequest) => invokeResult<RunSummary>('start_search', { request }),
+   cancelSearch: () => invokeResult<boolean>('cancel_search'),
+-  recentResults: (limit: number) =>
+-    invokeResult<Organization[]>('recent_results', { limit }),
++  recentResults: (limit: number) => invokeResult<Organization[]>('recent_results', { limit }),
+   exportResults: (format: ExportFormat, limit: number) =>
+     invokeResult<ExportReceipt>('export_results', { format, limit }),
+   health: () => TAURI_INVOKE<HealthInfo>('health'),
+diff --git a/apps/desktop/src/lib/ipc.ts b/apps/desktop/src/lib/ipc.ts
+index 2a470c7..e91c907 100644
+--- a/apps/desktop/src/lib/ipc.ts
++++ b/apps/desktop/src/lib/ipc.ts
+@@ -8,6 +8,7 @@ import {
+   type Result,
+   type RunSummary,
+   type SearchRequest,
++  type SourceKind,
+ } from '../bindings';
+ 
+ export type {
+@@ -18,6 +19,7 @@ export type {
+   Organization,
+   RunSummary,
+   SearchRequest,
++  SourceKind,
+ };
+ 
+ function unwrap<T>(result: Result<T, AppError>): T {
+diff --git a/crates/application/Cargo.toml b/crates/application/Cargo.toml
+index ff6adf2..3ed83f4 100644
+--- a/crates/application/Cargo.toml
++++ b/crates/application/Cargo.toml
+@@ -10,8 +10,9 @@ chrono.workspace = true
+ tokio-util.workspace = true
+ uuid.workspace = true
+ twogis-domain = { path = "../domain" }
++twogis-dedupe = { path = "../dedupe" }
+ twogis-export = { path = "../export" }
+-twogis-provider = { path = "../provider-2gis" }
++twogis-provider-core = { path = "../provider-core" }
+ twogis-storage-sqlite = { path = "../storage-sqlite" }
+ 
+ [lints]
+diff --git a/crates/application/src/lib.rs b/crates/application/src/lib.rs
+index 6b1fe5d..aea15f9 100644
+--- a/crates/application/src/lib.rs
++++ b/crates/application/src/lib.rs
+@@ -3,25 +3,34 @@ use std::{path::Path, sync::Arc};
+ use chrono::Utc;
+ use tokio_util::sync::CancellationToken;
+ use twogis_domain::{
+-    AppError, ExportFormat, Organization, ProgressPhase, RunSummary, ScrapeProgress, SearchRequest,
++    AppError, ErrorKind, ExportFormat, Organization, ProgressPhase, RunSummary, ScrapeProgress,
++    SearchRequest, SourceKind,
+ };
+-use twogis_provider::{DirectoryProvider, ProgressSink};
++use twogis_provider_core::{DirectoryProvider, ProgressSink};
+ use twogis_storage_sqlite::SqliteStore;
+ use uuid::Uuid;
+ 
+ #[derive(Clone)]
+ pub struct ApplicationService {
+-    provider: Arc<dyn DirectoryProvider>,
++    providers: Vec<Arc<dyn DirectoryProvider>>,
+     store: SqliteStore,
+ }
+ 
+ impl ApplicationService {
+-    pub fn new(provider: Arc<dyn DirectoryProvider>, store: SqliteStore) -> Self {
+-        Self { provider, store }
++    pub fn new(providers: Vec<Arc<dyn DirectoryProvider>>, store: SqliteStore) -> Self {
++        Self { providers, store }
+     }
+ 
+-    pub fn provider_id(&self) -> &'static str {
+-        self.provider.id()
++    pub fn provider_id(&self) -> String {
++        self.providers
++            .iter()
++            .map(|provider| provider.id())
++            .collect::<Vec<_>>()
++            .join(", ")
++    }
++
++    pub fn available_sources(&self) -> Vec<SourceKind> {
++        self.providers.iter().map(|provider| provider.source()).collect()
+     }
+ 
+     pub async fn run_search(
+@@ -33,32 +42,76 @@ impl ApplicationService {
+         request.validate()?;
+         let started_at = Utc::now().to_rfc3339();
+         let run_id = Uuid::new_v4().to_string();
+-        let output = self
+-            .provider
+-            .search(&request, progress.clone(), cancel)
+-            .await?;
++        let mut raw = Vec::<Organization>::new();
++        let mut warnings = Vec::<String>::new();
++
++        for source in request.sources.iter().copied() {
++            if cancel.is_cancelled() {
++                return Err(AppError::cancelled());
++            }
++            let Some(provider) = self.providers.iter().find(|provider| provider.source() == source) else {
++                warnings.push(format!("{}: provider is not available in this build", source.label()));
++                continue;
++            };
++
++            match provider
++                .search(&request, progress.clone(), cancel.clone())
++                .await
++            {
++                Ok(mut output) => {
++                    for row in &mut output.organizations {
++                        row.attach_source(source);
++                    }
++                    self.store.record_source_many(&output.organizations).await?;
++                    raw.append(&mut output.organizations);
++                    warnings.extend(
++                        output
++                            .warnings
++                            .into_iter()
++                            .map(|warning| format!("{}: {warning}", source.label())),
++                    );
++                }
++                Err(err) if matches!(err.kind, ErrorKind::Cancelled) => return Err(err),
++                Err(err) => warnings.push(format!("{}: {}", source.label(), err.message)),
++            }
++        }
++
++        if cancel.is_cancelled() {
++            return Err(AppError::cancelled());
++        }
++
++        (progress)(ScrapeProgress {
++            phase: ProgressPhase::Resolving,
++            current: raw.len() as u32,
++            total: Some(raw.len() as u32),
++            message: "Нормализация и объединение дублей".into(),
++        });
++        let raw_records = raw.len() as u32;
++        let resolved = twogis_dedupe::deduplicate(raw);
+ 
+         (progress)(ScrapeProgress {
+             phase: ProgressPhase::Saving,
+-            current: output.organizations.len() as u32,
+-            total: Some(output.organizations.len() as u32),
+-            message: "Saving to SQLite".into(),
++            current: resolved.organizations.len() as u32,
++            total: Some(resolved.organizations.len() as u32),
++            message: "Сохранение объединённых лидов в SQLite".into(),
+         });
+-        self.store.upsert_many(&output.organizations).await?;
++        self.store.upsert_many(&resolved.organizations).await?;
+         let finished_at = Utc::now().to_rfc3339();
+         (progress)(ScrapeProgress {
+             phase: ProgressPhase::Done,
+-            current: output.organizations.len() as u32,
+-            total: Some(output.organizations.len() as u32),
+-            message: "Done".into(),
++            current: resolved.organizations.len() as u32,
++            total: Some(resolved.organizations.len() as u32),
++            message: "Готово".into(),
+         });
+ 
+         Ok(RunSummary {
+             run_id,
+             started_at,
+             finished_at,
+-            organizations: output.organizations,
+-            warnings: output.warnings,
++            organizations: resolved.organizations,
++            warnings,
++            raw_records,
++            duplicates_merged: resolved.merged_count,
+         })
+     }
+ 
+diff --git a/crates/dedupe/Cargo.toml b/crates/dedupe/Cargo.toml
+new file mode 100644
+index 0000000..03d6809
+--- /dev/null
++++ b/crates/dedupe/Cargo.toml
+@@ -0,0 +1,14 @@
++[package]
++name = "twogis-dedupe"
++version.workspace = true
++edition.workspace = true
++license.workspace = true
++rust-version.workspace = true
++
++[dependencies]
++regex.workspace = true
++url.workspace = true
++twogis-domain = { path = "../domain" }
++
++[lints]
++workspace = true
+diff --git a/crates/dedupe/src/lib.rs b/crates/dedupe/src/lib.rs
+new file mode 100644
+index 0000000..51f5b66
+--- /dev/null
++++ b/crates/dedupe/src/lib.rs
+@@ -0,0 +1,334 @@
++use std::collections::{HashMap, HashSet};
++
++use twogis_domain::{DedupeInfo, Organization};
++use url::Url;
++
++#[derive(Debug, Default)]
++pub struct DedupeResult {
++    pub organizations: Vec<Organization>,
++    pub merged_count: u32,
++}
++
++pub fn deduplicate(rows: Vec<Organization>) -> DedupeResult {
++    let raw_count = rows.len() as u32;
++    let mut canonical = Vec::<Organization>::new();
++    let mut by_inn = HashMap::<String, usize>::new();
++    let mut by_ogrn = HashMap::<String, usize>::new();
++    let mut by_phone = HashMap::<String, usize>::new();
++    let mut by_domain = HashMap::<String, usize>::new();
++    let mut by_name_address = HashMap::<String, usize>::new();
++
++    for mut row in rows {
++        normalize_row(&mut row);
++        let match_index = find_match(
++            &row,
++            &by_inn,
++            &by_ogrn,
++            &by_phone,
++            &by_domain,
++            &by_name_address,
++        );
++
++        let index = if let Some(index) = match_index {
++            merge_into(&mut canonical[index], row);
++            index
++        } else {
++            row.dedupe = DedupeInfo {
++                merged_records: 1,
++                fingerprint: fingerprint(&row),
++                possible_duplicate: false,
++            };
++            canonical.push(row);
++            canonical.len() - 1
++        };
++        index_row(
++            &canonical[index],
++            index,
++            &mut by_inn,
++            &mut by_ogrn,
++            &mut by_phone,
++            &mut by_domain,
++            &mut by_name_address,
++        );
++    }
++
++    mark_possible_duplicates(&mut canonical);
++    canonical.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
++    let merged_count = raw_count.saturating_sub(canonical.len() as u32);
++
++    DedupeResult {
++        organizations: canonical,
++        merged_count,
++    }
++}
++
++fn find_match(
++    row: &Organization,
++    by_inn: &HashMap<String, usize>,
++    by_ogrn: &HashMap<String, usize>,
++    by_phone: &HashMap<String, usize>,
++    by_domain: &HashMap<String, usize>,
++    by_name_address: &HashMap<String, usize>,
++) -> Option<usize> {
++    row.inn
++        .as_deref()
++        .and_then(normalize_digits)
++        .and_then(|value| by_inn.get(&value).copied())
++        .or_else(|| {
++            row.ogrn
++                .as_deref()
++                .and_then(normalize_digits)
++                .and_then(|value| by_ogrn.get(&value).copied())
++        })
++        .or_else(|| {
++            row.phones
++                .iter()
++                .filter_map(|phone| normalize_phone(phone))
++                .find_map(|phone| by_phone.get(&phone).copied())
++        })
++        .or_else(|| {
++            row.website
++                .as_deref()
++                .and_then(normalize_domain)
++                .and_then(|domain| by_domain.get(&domain).copied())
++        })
++        .or_else(|| {
++            let key = name_address_key(row)?;
++            by_name_address.get(&key).copied()
++        })
++}
++
++fn index_row(
++    row: &Organization,
++    index: usize,
++    by_inn: &mut HashMap<String, usize>,
++    by_ogrn: &mut HashMap<String, usize>,
++    by_phone: &mut HashMap<String, usize>,
++    by_domain: &mut HashMap<String, usize>,
++    by_name_address: &mut HashMap<String, usize>,
++) {
++    if let Some(value) = row.inn.as_deref().and_then(normalize_digits) {
++        by_inn.insert(value, index);
++    }
++    if let Some(value) = row.ogrn.as_deref().and_then(normalize_digits) {
++        by_ogrn.insert(value, index);
++    }
++    for phone in row.phones.iter().filter_map(|phone| normalize_phone(phone)) {
++        by_phone.insert(phone, index);
++    }
++    if let Some(domain) = row.website.as_deref().and_then(normalize_domain) {
++        by_domain.insert(domain, index);
++    }
++    if let Some(key) = name_address_key(row) {
++        by_name_address.insert(key, index);
++    }
++}
++
++fn normalize_row(row: &mut Organization) {
++    let mut normalized_phones = Vec::new();
++    for phone in &row.phones {
++        if let Some(phone) = normalize_phone(phone) {
++            push_unique(&mut normalized_phones, phone);
++        }
++    }
++    row.phones = normalized_phones;
++    row.inn = row.inn.as_deref().and_then(normalize_digits);
++    row.ogrn = row.ogrn.as_deref().and_then(normalize_digits);
++    if row.dedupe.merged_records == 0 {
++        row.dedupe.merged_records = 1;
++    }
++}
++
++fn merge_into(target: &mut Organization, incoming: Organization) {
++    target.category = target.category.take().or(incoming.category);
++    target.address = target.address.take().or(incoming.address);
++    target.email = target.email.take().or(incoming.email);
++    target.website = target.website.take().or(incoming.website);
++    target.opening_status = target.opening_status.take().or(incoming.opening_status);
++    target.latitude = target.latitude.or(incoming.latitude);
++    target.longitude = target.longitude.or(incoming.longitude);
++    target.inn = target.inn.take().or(incoming.inn);
++    target.ogrn = target.ogrn.take().or(incoming.ogrn);
++
++    if incoming.review_count.unwrap_or(0) > target.review_count.unwrap_or(0) {
++        target.rating = incoming.rating;
++        target.review_count = incoming.review_count;
++    }
++
++    for phone in incoming.phones {
++        push_unique(&mut target.phones, phone);
++    }
++    for social in incoming.socials {
++        push_unique(&mut target.socials, social);
++    }
++    for source in incoming.sources {
++        if !target.sources.contains(&source) {
++            target.sources.push(source);
++        }
++    }
++    for tag in incoming.tags {
++        push_unique(&mut target.tags, tag);
++    }
++    for branch in incoming.branches {
++        if !target.branches.contains(&branch) {
++            target.branches.push(branch);
++        }
++    }
++
++    target.dedupe.merged_records = target
++        .dedupe
++        .merged_records
++        .saturating_add(incoming.dedupe.merged_records.max(1));
++    target.dedupe.fingerprint = fingerprint(target);
++    if target.dedupe.merged_records > 1 {
++        push_unique(&mut target.tags, "Объединённый лид".to_owned());
++    }
++}
++
++fn mark_possible_duplicates(rows: &mut [Organization]) {
++    let mut groups = HashMap::<String, Vec<usize>>::new();
++    for (index, row) in rows.iter().enumerate() {
++        let name = normalize_name(&row.name);
++        if name.len() >= 4 {
++            groups.entry(name).or_default().push(index);
++        }
++    }
++    for indexes in groups.values().filter(|indexes| indexes.len() > 1) {
++        for index in indexes {
++            rows[*index].dedupe.possible_duplicate = true;
++            push_unique(&mut rows[*index].tags, "Возможный дубль".to_owned());
++        }
++    }
++}
++
++fn fingerprint(row: &Organization) -> String {
++    if let Some(inn) = row.inn.as_deref().and_then(normalize_digits) {
++        return format!("inn:{inn}");
++    }
++    if let Some(ogrn) = row.ogrn.as_deref().and_then(normalize_digits) {
++        return format!("ogrn:{ogrn}");
++    }
++    if let Some(phone) = row.phones.iter().find_map(|phone| normalize_phone(phone)) {
++        return format!("phone:{phone}");
++    }
++    if let Some(domain) = row.website.as_deref().and_then(normalize_domain) {
++        return format!("domain:{domain}");
++    }
++    if let Some(key) = name_address_key(row) {
++        return format!("name-address:{key}");
++    }
++    format!("source:{}", row.id)
++}
++
++fn name_address_key(row: &Organization) -> Option<String> {
++    let name = normalize_name(&row.name);
++    let address = normalize_text(row.address.as_deref()?);
++    if name.is_empty() || address.is_empty() {
++        return None;
++    }
++    Some(format!("{name}|{address}"))
++}
++
++fn normalize_name(value: &str) -> String {
++    let mut text = value.to_lowercase();
++    for prefix in ["ооо", "ао", "пао", "ип", "зао", "оао"] {
++        text = text.replace(prefix, " ");
++    }
++    normalize_text(&text)
++}
++
++fn normalize_text(value: &str) -> String {
++    value
++        .chars()
++        .filter_map(|ch| {
++            if ch.is_alphanumeric() {
++                Some(ch.to_lowercase().next().unwrap_or(ch))
++            } else if ch.is_whitespace() {
++                Some(' ')
++            } else {
++                None
++            }
++        })
++        .collect::<String>()
++        .split_whitespace()
++        .collect::<Vec<_>>()
++        .join(" ")
++}
++
++fn normalize_digits(value: &str) -> Option<String> {
++    let digits = value.chars().filter(char::is_ascii_digit).collect::<String>();
++    (!digits.is_empty()).then_some(digits)
++}
++
++pub fn normalize_phone(value: &str) -> Option<String> {
++    let mut digits = value.chars().filter(char::is_ascii_digit).collect::<String>();
++    if digits.len() == 11 && digits.starts_with('8') {
++        digits.replace_range(0..1, "7");
++    } else if digits.len() == 10 {
++        digits.insert(0, '7');
++    }
++    (digits.len() >= 10).then(|| format!("+{digits}"))
++}
++
++pub fn normalize_domain(value: &str) -> Option<String> {
++    let parsed = Url::parse(value)
++        .or_else(|_| Url::parse(&format!("https://{value}")))
++        .ok()?;
++    let host = parsed.host_str()?.trim_start_matches("www.").to_lowercase();
++    (!host.is_empty()).then_some(host)
++}
++
++fn push_unique<T: PartialEq>(values: &mut Vec<T>, value: T) {
++    if !values.contains(&value) {
++        values.push(value);
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use twogis_domain::{SourceAttribution, SourceKind};
++
++    fn row(id: &str, name: &str, phone: &str, source: SourceKind) -> Organization {
++        Organization {
++            id: id.into(),
++            name: name.into(),
++            phones: vec![phone.into()],
++            source_url: format!("https://example.test/{id}"),
++            collected_at: "2026-10-01T00:00:00Z".into(),
++            sources: vec![SourceAttribution {
++                source,
++                source_id: id.into(),
++                source_url: format!("https://example.test/{id}"),
++                collected_at: "2026-10-01T00:00:00Z".into(),
++            }],
++            tags: vec![source.label().into()],
++            ..Organization::default()
++        }
++    }
++
++    #[test]
++    fn merges_same_russian_phone_across_sources() {
++        let result = deduplicate(vec![
++            row("a", "Ромашка", "8 (999) 123-45-67", SourceKind::TwoGis),
++            row("b", "ООО Ромашка", "+7 999 123 45 67", SourceKind::Yell),
++        ]);
++        assert_eq!(result.organizations.len(), 1);
++        assert_eq!(result.merged_count, 1);
++        assert_eq!(result.organizations[0].sources.len(), 2);
++        assert_eq!(result.organizations[0].phones, vec!["+79991234567"]);
++    }
++
++    #[test]
++    fn does_not_merge_same_name_with_different_addresses_without_strong_key() {
++        let mut a = row("a", "Сеть", "", SourceKind::TwoGis);
++        a.phones.clear();
++        a.address = Some("ул. Первая, 1".into());
++        let mut b = row("b", "Сеть", "", SourceKind::Yell);
++        b.phones.clear();
++        b.address = Some("ул. Вторая, 2".into());
++        let result = deduplicate(vec![a, b]);
++        assert_eq!(result.organizations.len(), 2);
++        assert!(result.organizations.iter().all(|row| row.dedupe.possible_duplicate));
++    }
++}
+diff --git a/crates/domain/src/lib.rs b/crates/domain/src/lib.rs
+index cf2d7bc..cc63b5c 100644
+--- a/crates/domain/src/lib.rs
++++ b/crates/domain/src/lib.rs
+@@ -2,6 +2,39 @@ use serde::{Deserialize, Serialize};
+ use specta::Type;
+ use thiserror::Error;
+ 
++#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
++#[serde(rename_all = "camelCase")]
++pub enum SourceKind {
++    TwoGis,
++    Yell,
++    Zoon,
++    Rusprofile,
++}
++
++impl SourceKind {
++    pub const fn id(self) -> &'static str {
++        match self {
++            Self::TwoGis => "2gis",
++            Self::Yell => "yell",
++            Self::Zoon => "zoon",
++            Self::Rusprofile => "rusprofile",
++        }
++    }
++
++    pub const fn label(self) -> &'static str {
++        match self {
++            Self::TwoGis => "2GIS",
++            Self::Yell => "Yell",
++            Self::Zoon => "Zoon",
++            Self::Rusprofile => "Rusprofile",
++        }
++    }
++}
++
++fn default_sources() -> Vec<SourceKind> {
++    vec![SourceKind::TwoGis]
++}
++
+ #[derive(Debug, Clone, Serialize, Deserialize, Type)]
+ #[serde(rename_all = "camelCase")]
+ pub struct SearchRequest {
+@@ -11,6 +44,8 @@ pub struct SearchRequest {
+     pub max_pages: u16,
+     pub concurrency: u8,
+     pub request_delay_ms: u32,
++    #[serde(default = "default_sources")]
++    pub sources: Vec<SourceKind>,
+ }
+ 
+ impl Default for SearchRequest {
+@@ -22,6 +57,7 @@ impl Default for SearchRequest {
+             max_pages: 5,
+             concurrency: 2,
+             request_delay_ms: 650,
++            sources: default_sources(),
+         }
+     }
+ }
+@@ -36,7 +72,7 @@ impl SearchRequest {
+                 .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
+         if !region_ok {
+             return Err(AppError::validation(
+-                "Region must be a 2GIS URL slug such as moscow, spb or kazan",
++                "Region must be a URL slug such as moscow, spb or kazan",
+             ));
+         }
+         let query = self.query.trim();
+@@ -54,13 +90,42 @@ impl SearchRequest {
+         }
+         if self.request_delay_ms < 250 {
+             return Err(AppError::validation(
+-                "requestDelayMs must be at least 250ms to avoid hammering the site",
++                "requestDelayMs must be at least 250ms",
+             ));
+         }
++        if self.sources.is_empty() {
++            return Err(AppError::validation("Select at least one source"));
++        }
+         Ok(())
+     }
+ }
+ 
++#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq)]
++#[serde(rename_all = "camelCase")]
++pub struct SourceAttribution {
++    pub source: SourceKind,
++    pub source_id: String,
++    pub source_url: String,
++    pub collected_at: String,
++}
++
++#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq)]
++#[serde(rename_all = "camelCase")]
++pub struct LeadBranch {
++    pub address: String,
++    pub latitude: Option<f64>,
++    pub longitude: Option<f64>,
++    pub source: SourceKind,
++}
++
++#[derive(Debug, Clone, Serialize, Deserialize, Type, Default, PartialEq)]
++#[serde(rename_all = "camelCase")]
++pub struct DedupeInfo {
++    pub merged_records: u32,
++    pub fingerprint: String,
++    pub possible_duplicate: bool,
++}
++
+ #[derive(Debug, Clone, Serialize, Deserialize, Type, Default)]
+ #[serde(rename_all = "camelCase")]
+ pub struct Organization {
+@@ -79,6 +144,46 @@ pub struct Organization {
+     pub longitude: Option<f64>,
+     pub source_url: String,
+     pub collected_at: String,
++    #[serde(default)]
++    pub inn: Option<String>,
++    #[serde(default)]
++    pub ogrn: Option<String>,
++    #[serde(default)]
++    pub sources: Vec<SourceAttribution>,
++    #[serde(default)]
++    pub tags: Vec<String>,
++    #[serde(default)]
++    pub branches: Vec<LeadBranch>,
++    #[serde(default)]
++    pub dedupe: DedupeInfo,
++}
++
++impl Organization {
++    pub fn attach_source(&mut self, source: SourceKind) {
++        if self.sources.is_empty() {
++            self.sources.push(SourceAttribution {
++                source,
++                source_id: self.id.clone(),
++                source_url: self.source_url.clone(),
++                collected_at: self.collected_at.clone(),
++            });
++        }
++        let source_tag = source.label().to_owned();
++        if !self.tags.contains(&source_tag) {
++            self.tags.push(source_tag);
++        }
++        if let Some(address) = self.address.clone() {
++            let branch = LeadBranch {
++                address,
++                latitude: self.latitude,
++                longitude: self.longitude,
++                source,
++            };
++            if !self.branches.contains(&branch) {
++                self.branches.push(branch);
++            }
++        }
++    }
+ }
+ 
+ #[derive(Debug, Clone, Serialize, Deserialize, Type)]
+@@ -89,6 +194,8 @@ pub struct RunSummary {
+     pub finished_at: String,
+     pub organizations: Vec<Organization>,
+     pub warnings: Vec<String>,
++    pub raw_records: u32,
++    pub duplicates_merged: u32,
+ }
+ 
+ #[derive(Debug, Clone, Serialize, Deserialize, Type)]
+@@ -105,6 +212,7 @@ pub struct ScrapeProgress {
+ pub enum ProgressPhase {
+     Discovering,
+     Enriching,
++    Resolving,
+     Saving,
+     Done,
+ }
+@@ -132,6 +240,7 @@ pub struct HealthInfo {
+     pub provider: String,
+     pub browser_engine: String,
+     pub api_key_required: bool,
++    pub available_sources: Vec<SourceKind>,
+ }
+ 
+ #[derive(Debug, Clone, Copy, Serialize, Deserialize, Type)]
+diff --git a/crates/export/src/lib.rs b/crates/export/src/lib.rs
+index e4d2e42..dae3215 100644
+--- a/crates/export/src/lib.rs
++++ b/crates/export/src/lib.rs
+@@ -11,25 +11,22 @@ pub fn export(path: &Path, format: ExportFormat, rows: &[Organization]) -> Resul
+     }
+ }
+ 
++fn source_labels(row: &Organization) -> String {
++    row.sources
++        .iter()
++        .map(|source| source.source.label())
++        .collect::<Vec<_>>()
++        .join(" | ")
++}
++
+ fn export_csv(path: &Path, rows: &[Organization]) -> Result<(), AppError> {
+     let mut writer = csv::Writer::from_path(path)
+         .map_err(|e| AppError::export(format!("failed to create CSV: {e}")))?;
+     writer
+         .write_record([
+-            "id",
+-            "name",
+-            "category",
+-            "address",
+-            "rating",
+-            "review_count",
+-            "phones",
+-            "email",
+-            "website",
+-            "socials",
+-            "opening_status",
+-            "latitude",
+-            "longitude",
+-            "source_url",
++            "id", "name", "category", "address", "rating", "review_count", "phones", "email",
++            "website", "socials", "inn", "ogrn", "sources", "tags", "merged_records",
++            "possible_duplicate", "opening_status", "latitude", "longitude", "source_url",
+             "collected_at",
+         ])
+         .map_err(|e| AppError::export(e.to_string()))?;
+@@ -39,36 +36,30 @@ fn export_csv(path: &Path, rows: &[Organization]) -> Result<(), AppError> {
+         let reviews = row.review_count.map(|v| v.to_string()).unwrap_or_default();
+         let phones = row.phones.join(" | ");
+         let socials = row.socials.join(" | ");
++        let sources = source_labels(row);
++        let tags = row.tags.join(" | ");
++        let merged = row.dedupe.merged_records.to_string();
++        let possible = row.dedupe.possible_duplicate.to_string();
+         let latitude = row.latitude.map(|v| v.to_string()).unwrap_or_default();
+         let longitude = row.longitude.map(|v| v.to_string()).unwrap_or_default();
+         writer
+             .write_record([
+-                row.id.as_str(),
+-                row.name.as_str(),
+-                row.category.as_deref().unwrap_or_default(),
+-                row.address.as_deref().unwrap_or_default(),
+-                rating.as_str(),
+-                reviews.as_str(),
+-                phones.as_str(),
+-                row.email.as_deref().unwrap_or_default(),
+-                row.website.as_deref().unwrap_or_default(),
+-                socials.as_str(),
+-                row.opening_status.as_deref().unwrap_or_default(),
+-                latitude.as_str(),
+-                longitude.as_str(),
+-                row.source_url.as_str(),
+-                row.collected_at.as_str(),
++                row.id.as_str(), row.name.as_str(), row.category.as_deref().unwrap_or_default(),
++                row.address.as_deref().unwrap_or_default(), rating.as_str(), reviews.as_str(),
++                phones.as_str(), row.email.as_deref().unwrap_or_default(),
++                row.website.as_deref().unwrap_or_default(), socials.as_str(),
++                row.inn.as_deref().unwrap_or_default(), row.ogrn.as_deref().unwrap_or_default(),
++                sources.as_str(), tags.as_str(), merged.as_str(), possible.as_str(),
++                row.opening_status.as_deref().unwrap_or_default(), latitude.as_str(), longitude.as_str(),
++                row.source_url.as_str(), row.collected_at.as_str(),
+             ])
+             .map_err(|e| AppError::export(e.to_string()))?;
+     }
+-    writer
+-        .flush()
+-        .map_err(|e| AppError::export(format!("failed to flush CSV: {e}")))
++    writer.flush().map_err(|e| AppError::export(format!("failed to flush CSV: {e}")))
+ }
+ 
+ fn export_json(path: &Path, rows: &[Organization]) -> Result<(), AppError> {
+-    let file = File::create(path)
+-        .map_err(|e| AppError::export(format!("failed to create JSON: {e}")))?;
++    let file = File::create(path).map_err(|e| AppError::export(format!("failed to create JSON: {e}")))?;
+     serde_json::to_writer_pretty(BufWriter::new(file), rows)
+         .map_err(|e| AppError::export(format!("failed to write JSON: {e}")))
+ }
+@@ -77,42 +68,30 @@ fn export_xlsx(path: &Path, rows: &[Organization]) -> Result<(), AppError> {
+     let mut workbook = Workbook::new();
+     let sheet = workbook.add_worksheet();
+     let headers = [
+-        "ID", "Name", "Category", "Address", "Rating", "Reviews", "Phones", "Email",
+-        "Website", "Socials", "Status", "Latitude", "Longitude", "2GIS URL", "Collected at",
++        "ID", "Name", "Category", "Address", "Rating", "Reviews", "Phones", "Email", "Website",
++        "Socials", "INN", "OGRN", "Sources", "Tags", "Merged", "Possible duplicate", "Status",
++        "Latitude", "Longitude", "Primary URL", "Collected at",
+     ];
+     for (column, header) in headers.iter().enumerate() {
+-        sheet
+-            .write_string(0, column as u16, *header)
+-            .map_err(|e| AppError::export(e.to_string()))?;
++        sheet.write_string(0, column as u16, *header).map_err(|e| AppError::export(e.to_string()))?;
+     }
+     for (index, row) in rows.iter().enumerate() {
+         let r = index as u32 + 1;
+         let cells = [
+-            row.id.clone(),
+-            row.name.clone(),
+-            row.category.clone().unwrap_or_default(),
+-            row.address.clone().unwrap_or_default(),
+-            row.rating.map(|v| v.to_string()).unwrap_or_default(),
+-            row.review_count.map(|v| v.to_string()).unwrap_or_default(),
+-            row.phones.join(" | "),
+-            row.email.clone().unwrap_or_default(),
+-            row.website.clone().unwrap_or_default(),
+-            row.socials.join(" | "),
+-            row.opening_status.clone().unwrap_or_default(),
++            row.id.clone(), row.name.clone(), row.category.clone().unwrap_or_default(),
++            row.address.clone().unwrap_or_default(), row.rating.map(|v| v.to_string()).unwrap_or_default(),
++            row.review_count.map(|v| v.to_string()).unwrap_or_default(), row.phones.join(" | "),
++            row.email.clone().unwrap_or_default(), row.website.clone().unwrap_or_default(),
++            row.socials.join(" | "), row.inn.clone().unwrap_or_default(), row.ogrn.clone().unwrap_or_default(),
++            source_labels(row), row.tags.join(" | "), row.dedupe.merged_records.to_string(),
++            row.dedupe.possible_duplicate.to_string(), row.opening_status.clone().unwrap_or_default(),
+             row.latitude.map(|v| v.to_string()).unwrap_or_default(),
+-            row.longitude.map(|v| v.to_string()).unwrap_or_default(),
+-            row.source_url.clone(),
+-            row.collected_at.clone(),
++            row.longitude.map(|v| v.to_string()).unwrap_or_default(), row.source_url.clone(), row.collected_at.clone(),
+         ];
+         for (column, value) in cells.iter().enumerate() {
+-            sheet
+-                .write_string(r, column as u16, value)
+-                .map_err(|e| AppError::export(e.to_string()))?;
++            sheet.write_string(r, column as u16, value).map_err(|e| AppError::export(e.to_string()))?;
+         }
+     }
+-    sheet
+-        .autofit();
+-    workbook
+-        .save(path)
+-        .map_err(|e| AppError::export(format!("failed to save XLSX: {e}")))
++    sheet.autofit();
++    workbook.save(path).map_err(|e| AppError::export(format!("failed to save XLSX: {e}")))
+ }
+diff --git a/crates/provider-2gis/Cargo.toml b/crates/provider-2gis/Cargo.toml
+index 5e4b3a9..14ecd5d 100644
+--- a/crates/provider-2gis/Cargo.toml
++++ b/crates/provider-2gis/Cargo.toml
+@@ -16,6 +16,7 @@ tokio.workspace = true
+ tokio-util.workspace = true
+ url.workspace = true
+ twogis-domain = { path = "../domain" }
++twogis-provider-core = { path = "../provider-core" }
+ 
+ [lints]
+ workspace = true
+diff --git a/crates/provider-2gis/src/lib.rs b/crates/provider-2gis/src/lib.rs
+index b40298a..557f83e 100644
+--- a/crates/provider-2gis/src/lib.rs
++++ b/crates/provider-2gis/src/lib.rs
+@@ -1,37 +1,16 @@
+ mod parse;
+ 
+-use std::{collections::HashSet, sync::Arc, time::Duration};
++use std::{collections::HashSet, time::Duration};
+ 
+ use async_trait::async_trait;
+ use futures::{stream, StreamExt};
+ use reqwest::{Client, StatusCode};
+ use scraper::{Html, Selector};
+ use tokio_util::sync::CancellationToken;
+-use twogis_domain::{
+-    AppError, ErrorKind, Organization, ProgressPhase, ScrapeProgress, SearchRequest,
+-};
++use twogis_domain::{AppError, ErrorKind, ProgressPhase, ScrapeProgress, SearchRequest, SourceKind};
++use twogis_provider_core::{DirectoryProvider, ProgressSink, ProviderOutput, ProviderPolicy};
+ use url::Url;
+ 
+-pub type ProgressSink = Arc<dyn Fn(ScrapeProgress) + Send + Sync>;
+-
+-#[derive(Debug, Default)]
+-pub struct ProviderOutput {
+-    pub organizations: Vec<Organization>,
+-    pub warnings: Vec<String>,
+-}
+-
+-#[async_trait]
+-pub trait DirectoryProvider: Send + Sync {
+-    fn id(&self) -> &'static str;
+-
+-    async fn search(
+-        &self,
+-        request: &SearchRequest,
+-        progress: ProgressSink,
+-        cancel: CancellationToken,
+-    ) -> Result<ProviderOutput, AppError>;
+-}
+-
+ #[derive(Clone)]
+ pub struct TwoGisHtmlProvider {
+     client: Client,
+@@ -148,10 +127,18 @@ impl TwoGisHtmlProvider {
+ 
+ #[async_trait]
+ impl DirectoryProvider for TwoGisHtmlProvider {
++    fn source(&self) -> SourceKind {
++        SourceKind::TwoGis
++    }
++
+     fn id(&self) -> &'static str {
+         "2gis-public-html"
+     }
+ 
++    fn policy(&self) -> ProviderPolicy {
++        ProviderPolicy::conservative(650, 4)
++    }
++
+     async fn search(
+         &self,
+         request: &SearchRequest,
+@@ -196,8 +183,8 @@ impl DirectoryProvider for TwoGisHtmlProvider {
+ 
+         candidates.truncate(request.max_results as usize);
+         let total = candidates.len() as u32;
+-        let concurrency = usize::from(request.concurrency.max(1));
+-        let delay = u64::from(request.request_delay_ms);
++        let concurrency = usize::from(request.concurrency.min(self.policy().max_concurrency).max(1));
++        let delay = u64::from(request.request_delay_ms.max(self.policy().min_delay_ms));
+         let provider = self.clone();
+         let progress_for_stream = progress.clone();
+         let cancel_for_stream = cancel.clone();
+@@ -218,6 +205,7 @@ impl DirectoryProvider for TwoGisHtmlProvider {
+                         .map_err(|e| AppError::parse(format!("bad organization URL: {e}")))?;
+                     let html = provider.fetch_html(&parsed_url).await?;
+                     let mut organization = parse::parse_firm_page(&url, &html)?;
++                    organization.attach_source(SourceKind::TwoGis);
+                     if organization.name.is_empty() {
+                         organization.name = fallback_name;
+                     }
+diff --git a/crates/provider-2gis/src/parse.rs b/crates/provider-2gis/src/parse.rs
+index 4bc2cda..891edb5 100644
+--- a/crates/provider-2gis/src/parse.rs
++++ b/crates/provider-2gis/src/parse.rs
+@@ -66,6 +66,7 @@ pub fn parse_firm_page(source_url: &str, html: &str) -> Result<Organization, App
+         longitude,
+         source_url: source_url.to_owned(),
+         collected_at: Utc::now().to_rfc3339(),
++        ..Organization::default()
+     })
+ }
+ 
+diff --git a/crates/provider-core/Cargo.toml b/crates/provider-core/Cargo.toml
+new file mode 100644
+index 0000000..cb0626a
+--- /dev/null
++++ b/crates/provider-core/Cargo.toml
+@@ -0,0 +1,14 @@
++[package]
++name = "twogis-provider-core"
++version.workspace = true
++edition.workspace = true
++license.workspace = true
++rust-version.workspace = true
++
++[dependencies]
++async-trait.workspace = true
++tokio-util.workspace = true
++twogis-domain = { path = "../domain" }
++
++[lints]
++workspace = true
+diff --git a/crates/provider-core/src/lib.rs b/crates/provider-core/src/lib.rs
+new file mode 100644
+index 0000000..62a1bdf
+--- /dev/null
++++ b/crates/provider-core/src/lib.rs
+@@ -0,0 +1,42 @@
++use std::sync::Arc;
++
++use async_trait::async_trait;
++use tokio_util::sync::CancellationToken;
++use twogis_domain::{AppError, Organization, ScrapeProgress, SearchRequest, SourceKind};
++
++pub type ProgressSink = Arc<dyn Fn(ScrapeProgress) + Send + Sync>;
++
++#[derive(Debug, Default)]
++pub struct ProviderOutput {
++    pub organizations: Vec<Organization>,
++    pub warnings: Vec<String>,
++}
++
++#[derive(Debug, Clone, Copy)]
++pub struct ProviderPolicy {
++    pub min_delay_ms: u32,
++    pub max_concurrency: u8,
++}
++
++impl ProviderPolicy {
++    pub const fn conservative(min_delay_ms: u32, max_concurrency: u8) -> Self {
++        Self {
++            min_delay_ms,
++            max_concurrency,
++        }
++    }
++}
++
++#[async_trait]
++pub trait DirectoryProvider: Send + Sync {
++    fn source(&self) -> SourceKind;
++    fn id(&self) -> &'static str;
++    fn policy(&self) -> ProviderPolicy;
++
++    async fn search(
++        &self,
++        request: &SearchRequest,
++        progress: ProgressSink,
++        cancel: CancellationToken,
++    ) -> Result<ProviderOutput, AppError>;
++}
+diff --git a/crates/provider-public-catalogs/Cargo.toml b/crates/provider-public-catalogs/Cargo.toml
+new file mode 100644
+index 0000000..009ced4
+--- /dev/null
++++ b/crates/provider-public-catalogs/Cargo.toml
+@@ -0,0 +1,21 @@
++[package]
++name = "twogis-provider-public-catalogs"
++version.workspace = true
++edition.workspace = true
++license.workspace = true
++rust-version.workspace = true
++
++[dependencies]
++async-trait.workspace = true
++chrono.workspace = true
++regex.workspace = true
++reqwest.workspace = true
++scraper.workspace = true
++tokio.workspace = true
++tokio-util.workspace = true
++url.workspace = true
++twogis-domain = { path = "../domain" }
++twogis-provider-core = { path = "../provider-core" }
++
++[lints]
++workspace = true
+diff --git a/crates/provider-public-catalogs/src/lib.rs b/crates/provider-public-catalogs/src/lib.rs
+new file mode 100644
+index 0000000..9dfc53b
+--- /dev/null
++++ b/crates/provider-public-catalogs/src/lib.rs
+@@ -0,0 +1,589 @@
++use std::{collections::HashSet, time::Duration};
++
++use async_trait::async_trait;
++use chrono::Utc;
++use regex::Regex;
++use reqwest::{Client, StatusCode};
++use scraper::{Html, Selector};
++use tokio_util::sync::CancellationToken;
++use twogis_domain::{
++    AppError, ErrorKind, Organization, ProgressPhase, ScrapeProgress, SearchRequest, SourceKind,
++};
++use twogis_provider_core::{DirectoryProvider, ProgressSink, ProviderOutput, ProviderPolicy};
++use url::Url;
++
++#[derive(Clone)]
++struct SafeHttp {
++    client: Client,
++}
++
++impl SafeHttp {
++    fn new() -> Result<Self, AppError> {
++        let client = Client::builder()
++            .user_agent("lead-aggregator/0.2 (+local desktop app; public HTML only)")
++            .timeout(Duration::from_secs(25))
++            .build()
++            .map_err(|e| AppError::network(format!("failed to create HTTP client: {e}")))?;
++        Ok(Self { client })
++    }
++
++    async fn fetch(&self, source: SourceKind, url: &Url) -> Result<String, AppError> {
++        let response = self
++            .client
++            .get(url.clone())
++            .header("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.5")
++            .send()
++            .await
++            .map_err(|e| AppError::network(format!("{} request failed for {url}: {e}", source.label())))?;
++
++        match response.status() {
++            StatusCode::TOO_MANY_REQUESTS => {
++                return Err(AppError::new(
++                    ErrorKind::RateLimited,
++                    format!("{} returned HTTP 429; provider paused without bypass attempts", source.label()),
++                    true,
++                ));
++            }
++            StatusCode::FORBIDDEN => {
++                return Err(AppError::new(
++                    ErrorKind::Blocked,
++                    format!("{} returned HTTP 403; no anti-bot bypass is attempted", source.label()),
++                    true,
++                ));
++            }
++            status if !status.is_success() => {
++                return Err(AppError::network(format!(
++                    "{} returned HTTP {status} for {url}",
++                    source.label()
++                )));
++            }
++            _ => {}
++        }
++
++        let body = response
++            .text()
++            .await
++            .map_err(|e| AppError::network(format!("failed to read {url}: {e}")))?;
++        let lower = body.to_lowercase();
++        if lower.contains("captcha")
++            || lower.contains("подтвердите, что вы не робот")
++            || lower.contains("проверка безопасности")
++        {
++            return Err(AppError::new(
++                ErrorKind::Blocked,
++                format!("{} requested an anti-bot check; provider stopped", source.label()),
++                true,
++            ));
++        }
++        Ok(body)
++    }
++}
++
++#[derive(Clone)]
++pub struct YellHtmlProvider {
++    http: SafeHttp,
++    base: Url,
++}
++
++impl YellHtmlProvider {
++    pub fn new() -> Result<Self, AppError> {
++        Ok(Self {
++            http: SafeHttp::new()?,
++            base: Url::parse("https://www.yell.ru/")
++                .map_err(|e| AppError::new(ErrorKind::Internal, e.to_string(), false))?,
++        })
++    }
++
++    fn search_url(&self, request: &SearchRequest, page: u16) -> Result<Url, AppError> {
++        let mut url = self
++            .base
++            .join(&format!("{}/top/", request.region))
++            .map_err(|e| AppError::parse(format!("bad Yell URL: {e}")))?;
++        url.query_pairs_mut()
++            .append_pair("text", request.query.trim())
++            .append_pair("page", &page.to_string());
++        Ok(url)
++    }
++
++    fn discover(&self, request: &SearchRequest, html: &str) -> Vec<Url> {
++        discover_links(&self.base, html, |url| {
++            url.host_str() == Some("www.yell.ru")
++                && url
++                    .path()
++                    .contains(&format!("/{}/com/", request.region))
++        })
++    }
++}
++
++#[async_trait]
++impl DirectoryProvider for YellHtmlProvider {
++    fn source(&self) -> SourceKind {
++        SourceKind::Yell
++    }
++
++    fn id(&self) -> &'static str {
++        "yell-public-html"
++    }
++
++    fn policy(&self) -> ProviderPolicy {
++        ProviderPolicy::conservative(1_000, 2)
++    }
++
++    async fn search(
++        &self,
++        request: &SearchRequest,
++        progress: ProgressSink,
++        cancel: CancellationToken,
++    ) -> Result<ProviderOutput, AppError> {
++        let candidates = collect_candidates(
++            self,
++            request,
++            progress.clone(),
++            cancel.clone(),
++            |provider, page| provider.search_url(request, page),
++            |provider, html| provider.discover(request, html),
++        )
++        .await?;
++        enrich_candidates(self, request, candidates, progress, cancel).await
++    }
++}
++
++#[derive(Clone)]
++pub struct ZoonHtmlProvider {
++    http: SafeHttp,
++    base: Url,
++}
++
++impl ZoonHtmlProvider {
++    pub fn new() -> Result<Self, AppError> {
++        Ok(Self {
++            http: SafeHttp::new()?,
++            base: Url::parse("https://zoon.ru/")
++                .map_err(|e| AppError::new(ErrorKind::Internal, e.to_string(), false))?,
++        })
++    }
++
++    fn search_url(&self, request: &SearchRequest, page: u16) -> Result<Url, AppError> {
++        let mut url = self
++            .base
++            .join("search/")
++            .map_err(|e| AppError::parse(format!("bad Zoon URL: {e}")))?;
++        url.query_pairs_mut()
++            .append_pair("city", &request.region)
++            .append_pair("query", request.query.trim())
++            .append_pair("page", &page.to_string());
++        Ok(url)
++    }
++
++    fn discover(&self, html: &str) -> Vec<Url> {
++        discover_links(&self.base, html, |url| {
++            if url.host_str() != Some("zoon.ru") {
++                return false;
++            }
++            let segments = url
++                .path_segments()
++                .map(|segments| segments.filter(|s| !s.is_empty()).collect::<Vec<_>>())
++                .unwrap_or_default();
++            if segments.len() != 3 {
++                return false;
++            }
++            !matches!(segments[0], "search" | "article" | "promo")
++                && !matches!(segments[2], "reviews" | "price" | "type" | "award")
++        })
++    }
++}
++
++#[async_trait]
++impl DirectoryProvider for ZoonHtmlProvider {
++    fn source(&self) -> SourceKind {
++        SourceKind::Zoon
++    }
++
++    fn id(&self) -> &'static str {
++        "zoon-public-html"
++    }
++
++    fn policy(&self) -> ProviderPolicy {
++        ProviderPolicy::conservative(1_500, 1)
++    }
++
++    async fn search(
++        &self,
++        request: &SearchRequest,
++        progress: ProgressSink,
++        cancel: CancellationToken,
++    ) -> Result<ProviderOutput, AppError> {
++        let candidates = collect_candidates(
++            self,
++            request,
++            progress.clone(),
++            cancel.clone(),
++            |provider, page| provider.search_url(request, page),
++            |provider, html| provider.discover(html),
++        )
++        .await?;
++        enrich_candidates(self, request, candidates, progress, cancel).await
++    }
++}
++
++#[derive(Clone)]
++pub struct RusprofileHtmlProvider {
++    http: SafeHttp,
++    base: Url,
++}
++
++impl RusprofileHtmlProvider {
++    pub fn new() -> Result<Self, AppError> {
++        Ok(Self {
++            http: SafeHttp::new()?,
++            base: Url::parse("https://www.rusprofile.ru/")
++                .map_err(|e| AppError::new(ErrorKind::Internal, e.to_string(), false))?,
++        })
++    }
++
++    fn search_url(&self, request: &SearchRequest, page: u16) -> Result<Url, AppError> {
++        let mut url = self
++            .base
++            .join("search")
++            .map_err(|e| AppError::parse(format!("bad Rusprofile URL: {e}")))?;
++        url.query_pairs_mut()
++            .append_pair("query", request.query.trim())
++            .append_pair("page", &page.to_string());
++        Ok(url)
++    }
++
++    fn discover(&self, html: &str) -> Vec<Url> {
++        discover_links(&self.base, html, |url| {
++            url.host_str() == Some("www.rusprofile.ru")
++                && Regex::new(r"^/id/\d+/?$")
++                    .ok()
++                    .is_some_and(|re| re.is_match(url.path()))
++        })
++    }
++}
++
++#[async_trait]
++impl DirectoryProvider for RusprofileHtmlProvider {
++    fn source(&self) -> SourceKind {
++        SourceKind::Rusprofile
++    }
++
++    fn id(&self) -> &'static str {
++        "rusprofile-public-html"
++    }
++
++    fn policy(&self) -> ProviderPolicy {
++        ProviderPolicy::conservative(2_500, 1)
++    }
++
++    async fn search(
++        &self,
++        request: &SearchRequest,
++        progress: ProgressSink,
++        cancel: CancellationToken,
++    ) -> Result<ProviderOutput, AppError> {
++        let candidates = collect_candidates(
++            self,
++            request,
++            progress.clone(),
++            cancel.clone(),
++            |provider, page| provider.search_url(request, page),
++            |provider, html| provider.discover(html),
++        )
++        .await?;
++        enrich_candidates(self, request, candidates, progress, cancel).await
++    }
++}
++
++trait PublicCatalog: DirectoryProvider + Clone {
++    fn http(&self) -> &SafeHttp;
++}
++
++impl PublicCatalog for YellHtmlProvider {
++    fn http(&self) -> &SafeHttp {
++        &self.http
++    }
++}
++impl PublicCatalog for ZoonHtmlProvider {
++    fn http(&self) -> &SafeHttp {
++        &self.http
++    }
++}
++impl PublicCatalog for RusprofileHtmlProvider {
++    fn http(&self) -> &SafeHttp {
++        &self.http
++    }
++}
++
++async fn collect_candidates<P, SearchUrl, Discover>(
++    provider: &P,
++    request: &SearchRequest,
++    progress: ProgressSink,
++    cancel: CancellationToken,
++    search_url: SearchUrl,
++    discover: Discover,
++) -> Result<Vec<Url>, AppError>
++where
++    P: PublicCatalog,
++    SearchUrl: Fn(&P, u16) -> Result<Url, AppError>,
++    Discover: Fn(&P, &str) -> Vec<Url>,
++{
++    let mut seen = HashSet::new();
++    let mut candidates = Vec::new();
++    let delay = request.request_delay_ms.max(provider.policy().min_delay_ms);
++
++    for page in 1..=request.max_pages {
++        if cancel.is_cancelled() {
++            return Err(AppError::cancelled());
++        }
++        (progress)(ScrapeProgress {
++            phase: ProgressPhase::Discovering,
++            current: u32::from(page),
++            total: Some(u32::from(request.max_pages)),
++            message: format!("{}: страница {page}", provider.source().label()),
++        });
++        let url = search_url(provider, page)?;
++        let html = provider.http().fetch(provider.source(), &url).await?;
++        let found = discover(provider, &html);
++        let before = candidates.len();
++        for url in found {
++            if seen.insert(url.to_string()) {
++                candidates.push(url);
++                if candidates.len() >= request.max_results as usize {
++                    break;
++                }
++            }
++        }
++        if candidates.len() >= request.max_results as usize || candidates.len() == before {
++            break;
++        }
++        tokio::time::sleep(Duration::from_millis(u64::from(delay))).await;
++    }
++    candidates.truncate(request.max_results as usize);
++    Ok(candidates)
++}
++
++async fn enrich_candidates<P: PublicCatalog>(
++    provider: &P,
++    request: &SearchRequest,
++    candidates: Vec<Url>,
++    progress: ProgressSink,
++    cancel: CancellationToken,
++) -> Result<ProviderOutput, AppError> {
++    let total = candidates.len() as u32;
++    let delay = request.request_delay_ms.max(provider.policy().min_delay_ms);
++    let mut output = ProviderOutput::default();
++
++    for (index, url) in candidates.into_iter().enumerate() {
++        if cancel.is_cancelled() {
++            return Err(AppError::cancelled());
++        }
++        tokio::time::sleep(Duration::from_millis(u64::from(delay))).await;
++        match provider.http().fetch(provider.source(), &url).await {
++            Ok(html) => match parse_public_profile(provider.source(), &url, &html) {
++                Ok(row) => {
++                    (progress)(ScrapeProgress {
++                        phase: ProgressPhase::Enriching,
++                        current: index as u32 + 1,
++                        total: Some(total),
++                        message: format!("{}: {}", provider.source().label(), row.name),
++                    });
++                    output.organizations.push(row);
++                }
++                Err(err) => output.warnings.push(err.message),
++            },
++            Err(err) if matches!(err.kind, ErrorKind::RateLimited | ErrorKind::Blocked) => {
++                return Err(err);
++            }
++            Err(err) => output.warnings.push(err.message),
++        }
++    }
++    Ok(output)
++}
++
++fn discover_links(base: &Url, html: &str, predicate: impl Fn(&Url) -> bool) -> Vec<Url> {
++    let document = Html::parse_document(html);
++    let Ok(selector) = Selector::parse("a[href]") else {
++        return Vec::new();
++    };
++    let mut seen = HashSet::new();
++    let mut out = Vec::new();
++    for anchor in document.select(&selector) {
++        let Some(href) = anchor.value().attr("href") else {
++            continue;
++        };
++        let Ok(mut url) = base.join(href) else {
++            continue;
++        };
++        url.set_query(None);
++        url.set_fragment(None);
++        if predicate(&url) && seen.insert(url.to_string()) {
++            out.push(url);
++        }
++    }
++    out
++}
++
++fn parse_public_profile(source: SourceKind, url: &Url, html: &str) -> Result<Organization, AppError> {
++    let document = Html::parse_document(html);
++    let name = first_text(&document, "h1").unwrap_or_default();
++    if name.is_empty() {
++        return Err(AppError::parse(format!("{} profile has no h1: {url}", source.label())));
++    }
++
++    let anchors = all_anchors(&document);
++    let mut phones = Vec::new();
++    let mut socials = Vec::new();
++    let mut email = None;
++    let mut website = None;
++
++    for anchor in anchors {
++        let href = anchor.value().attr("href").unwrap_or_default().trim();
++        if let Some(phone) = href.strip_prefix("tel:") {
++            push_unique(&mut phones, phone.trim().to_owned());
++        } else if let Some(value) = href.strip_prefix("mailto:") {
++            email.get_or_insert_with(|| value.trim().to_owned());
++        } else if is_social(href) {
++            push_unique(&mut socials, href.to_owned());
++        } else if website.is_none() && is_external_website(source, href) {
++            website = Some(href.to_owned());
++        }
++    }
++
++    let plain = document
++        .root_element()
++        .text()
++        .map(str::trim)
++        .filter(|text| !text.is_empty())
++        .collect::<Vec<_>>()
++        .join("\n");
++    let inn = capture_digits(&plain, r"(?i)ИНН\s*:?\s*(\d{10,12})");
++    let ogrn = capture_digits(&plain, r"(?i)ОГРН\s*:?\s*(\d{13,15})");
++    let address = first_attr(&document, "[itemprop='streetAddress']", "content")
++        .or_else(|| first_text(&document, "[itemprop='streetAddress']"))
++        .or_else(|| find_address_line(&plain));
++    let rating = first_attr(&document, "meta[itemprop='ratingValue']", "content")
++        .and_then(|value| value.replace(',', ".").parse::<f64>().ok());
++    let review_count = first_attr(&document, "meta[itemprop='reviewCount']", "content")
++        .and_then(|value| value.parse::<u32>().ok());
++    let id = url
++        .path_segments()
++        .and_then(|mut parts| parts.filter(|part| !part.is_empty()).next_back())
++        .unwrap_or(url.as_str())
++        .to_owned();
++
++    let mut row = Organization {
++        id,
++        name,
++        address,
++        rating,
++        review_count,
++        phones,
++        email,
++        website,
++        socials,
++        inn,
++        ogrn,
++        source_url: url.to_string(),
++        collected_at: Utc::now().to_rfc3339(),
++        ..Organization::default()
++    };
++    row.attach_source(source);
++    Ok(row)
++}
++
++fn first_text(document: &Html, selector: &str) -> Option<String> {
++    let selector = Selector::parse(selector).ok()?;
++    document
++        .select(&selector)
++        .map(|node| node.text().map(str::trim).filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" "))
++        .find(|text| !text.is_empty())
++}
++
++fn first_attr(document: &Html, selector: &str, attr: &str) -> Option<String> {
++    let selector = Selector::parse(selector).ok()?;
++    document
++        .select(&selector)
++        .filter_map(|node| node.value().attr(attr))
++        .map(str::trim)
++        .find(|value| !value.is_empty())
++        .map(str::to_owned)
++}
++
++fn all_anchors(document: &Html) -> Vec<scraper::ElementRef<'_>> {
++    let Ok(selector) = Selector::parse("a[href]") else {
++        return Vec::new();
++    };
++    document.select(&selector).collect()
++}
++
++fn capture_digits(text: &str, pattern: &str) -> Option<String> {
++    Regex::new(pattern)
++        .ok()?
++        .captures(text)?
++        .get(1)
++        .map(|m| m.as_str().to_owned())
++}
++
++fn find_address_line(text: &str) -> Option<String> {
++    text.lines()
++        .map(str::trim)
++        .find(|line| {
++            line.len() >= 8
++                && line.len() <= 220
++                && (line.starts_with("г ")
++                    || line.starts_with("Россия, г ")
++                    || line.contains(" ул ")
++                    || line.contains(" улица "))
++        })
++        .map(str::to_owned)
++}
++
++fn is_social(href: &str) -> bool {
++    ["vk.com", "t.me", "telegram.me", "ok.ru", "youtube.com", "rutube.ru"]
++        .iter()
++        .any(|host| href.contains(host))
++}
++
++fn is_external_website(source: SourceKind, href: &str) -> bool {
++    if !(href.starts_with("https://") || href.starts_with("http://")) {
++        return false;
++    }
++    let own = match source {
++        SourceKind::TwoGis => "2gis.ru",
++        SourceKind::Yell => "yell.ru",
++        SourceKind::Zoon => "zoon.ru",
++        SourceKind::Rusprofile => "rusprofile.ru",
++    };
++    !href.contains(own) && !is_social(href)
++}
++
++fn push_unique<T: PartialEq>(values: &mut Vec<T>, value: T) {
++    if !values.contains(&value) {
++        values.push(value);
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn parses_public_profile_and_requisites() {
++        let html = r#"
++          <html><body>
++            <h1>ООО Ромашка</h1>
++            <div>Россия, г Москва, ул Тестовая, д 1</div>
++            <a href="tel:+79991234567">+7 999 123-45-67</a>
++            <a href="https://romashka.example">romashka.example</a>
++            <div>ИНН: 7701234567</div><div>ОГРН: 1027700123456</div>
++          </body></html>
++        "#;
++        let url = Url::parse("https://www.yell.ru/moscow/com/romashka_1/").expect("url");
++        let row = parse_public_profile(SourceKind::Yell, &url, html).expect("parse");
++        assert_eq!(row.name, "ООО Ромашка");
++        assert_eq!(row.inn.as_deref(), Some("7701234567"));
++        assert_eq!(row.ogrn.as_deref(), Some("1027700123456"));
++        assert_eq!(row.sources[0].source, SourceKind::Yell);
++    }
++}
+diff --git a/crates/storage-sqlite/src/lib.rs b/crates/storage-sqlite/src/lib.rs
+index 408e9fa..b9683af 100644
+--- a/crates/storage-sqlite/src/lib.rs
++++ b/crates/storage-sqlite/src/lib.rs
+@@ -1,7 +1,10 @@
+ use std::path::Path;
+ 
+-use sqlx::{sqlite::{SqliteConnectOptions, SqlitePoolOptions}, Row, SqlitePool};
+-use twogis_domain::{AppError, Organization};
++use sqlx::{
++    Row, SqlitePool,
++    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
++};
++use twogis_domain::{AppError, DedupeInfo, Organization};
+ 
+ #[derive(Clone)]
+ pub struct SqliteStore {
+@@ -48,6 +51,98 @@ impl SqliteStore {
+         .execute(&self.pool)
+         .await
+         .map_err(|e| AppError::storage(format!("failed to migrate database: {e}")))?;
++
++        for (name, definition) in [
++            ("inn", "TEXT"),
++            ("ogrn", "TEXT"),
++            ("sources_json", "TEXT NOT NULL DEFAULT '[]'"),
++            ("tags_json", "TEXT NOT NULL DEFAULT '[]'"),
++            ("branches_json", "TEXT NOT NULL DEFAULT '[]'"),
++            ("dedupe_json", "TEXT NOT NULL DEFAULT '{}'"),
++        ] {
++            self.ensure_column(name, definition).await?;
++        }
++
++        sqlx::query(
++            r#"
++            CREATE TABLE IF NOT EXISTS source_records (
++              id INTEGER PRIMARY KEY AUTOINCREMENT,
++              source TEXT NOT NULL,
++              source_id TEXT NOT NULL,
++              source_url TEXT NOT NULL,
++              payload_json TEXT NOT NULL,
++              collected_at TEXT NOT NULL,
++              UNIQUE(source, source_id, source_url)
++            )
++            "#,
++        )
++        .execute(&self.pool)
++        .await
++        .map_err(|e| AppError::storage(format!("failed to create source_records: {e}")))?;
++
++        sqlx::query("CREATE INDEX IF NOT EXISTS idx_organizations_inn ON organizations(inn)")
++            .execute(&self.pool)
++            .await
++            .map_err(|e| AppError::storage(format!("failed to create INN index: {e}")))?;
++        sqlx::query("CREATE INDEX IF NOT EXISTS idx_organizations_ogrn ON organizations(ogrn)")
++            .execute(&self.pool)
++            .await
++            .map_err(|e| AppError::storage(format!("failed to create OGRN index: {e}")))?;
++        Ok(())
++    }
++
++    async fn ensure_column(&self, name: &str, definition: &str) -> Result<(), AppError> {
++        let columns = sqlx::query("PRAGMA table_info(organizations)")
++            .fetch_all(&self.pool)
++            .await
++            .map_err(|e| AppError::storage(format!("failed to inspect database schema: {e}")))?;
++        let exists = columns.iter().any(|row| {
++            row.try_get::<String, _>("name")
++                .is_ok_and(|column| column == name)
++        });
++        if exists {
++            return Ok(());
++        }
++        let sql = format!("ALTER TABLE organizations ADD COLUMN {name} {definition}");
++        sqlx::query(&sql)
++            .execute(&self.pool)
++            .await
++            .map_err(|e| AppError::storage(format!("failed to add column {name}: {e}")))?;
++        Ok(())
++    }
++
++    pub async fn record_source_many(&self, rows: &[Organization]) -> Result<(), AppError> {
++        let mut tx = self
++            .pool
++            .begin()
++            .await
++            .map_err(|e| AppError::storage(format!("failed to start source transaction: {e}")))?;
++        for row in rows {
++            let payload = serde_json::to_string(row)
++                .map_err(|e| AppError::storage(format!("failed to encode source row: {e}")))?;
++            for source in &row.sources {
++                sqlx::query(
++                    r#"
++                    INSERT INTO source_records (source, source_id, source_url, payload_json, collected_at)
++                    VALUES (?, ?, ?, ?, ?)
++                    ON CONFLICT(source, source_id, source_url) DO UPDATE SET
++                      payload_json=excluded.payload_json,
++                      collected_at=excluded.collected_at
++                    "#,
++                )
++                .bind(source.source.id())
++                .bind(&source.source_id)
++                .bind(&source.source_url)
++                .bind(&payload)
++                .bind(&source.collected_at)
++                .execute(&mut *tx)
++                .await
++                .map_err(|e| AppError::storage(format!("failed to persist source record: {e}")))?;
++            }
++        }
++        tx.commit()
++            .await
++            .map_err(|e| AppError::storage(format!("failed to commit source records: {e}")))?;
+         Ok(())
+     }
+ 
+@@ -59,17 +154,20 @@ impl SqliteStore {
+             .map_err(|e| AppError::storage(format!("failed to start transaction: {e}")))?;
+ 
+         for row in rows {
+-            let phones = serde_json::to_string(&row.phones)
+-                .map_err(|e| AppError::storage(format!("failed to encode phones: {e}")))?;
+-            let socials = serde_json::to_string(&row.socials)
+-                .map_err(|e| AppError::storage(format!("failed to encode socials: {e}")))?;
++            let phones = encode(&row.phones, "phones")?;
++            let socials = encode(&row.socials, "socials")?;
++            let sources = encode(&row.sources, "sources")?;
++            let tags = encode(&row.tags, "tags")?;
++            let branches = encode(&row.branches, "branches")?;
++            let dedupe = encode(&row.dedupe, "dedupe info")?;
+             sqlx::query(
+                 r#"
+                 INSERT INTO organizations (
+                   id, name, category, address, rating, review_count,
+                   phones_json, email, website, socials_json, opening_status,
+-                  latitude, longitude, source_url, collected_at
+-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
++                  latitude, longitude, source_url, collected_at, inn, ogrn,
++                  sources_json, tags_json, branches_json, dedupe_json
++                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 ON CONFLICT(id) DO UPDATE SET
+                   name=excluded.name,
+                   category=excluded.category,
+@@ -84,7 +182,13 @@ impl SqliteStore {
+                   latitude=excluded.latitude,
+                   longitude=excluded.longitude,
+                   source_url=excluded.source_url,
+-                  collected_at=excluded.collected_at
++                  collected_at=excluded.collected_at,
++                  inn=excluded.inn,
++                  ogrn=excluded.ogrn,
++                  sources_json=excluded.sources_json,
++                  tags_json=excluded.tags_json,
++                  branches_json=excluded.branches_json,
++                  dedupe_json=excluded.dedupe_json
+                 "#,
+             )
+             .bind(&row.id)
+@@ -102,6 +206,12 @@ impl SqliteStore {
+             .bind(row.longitude)
+             .bind(&row.source_url)
+             .bind(&row.collected_at)
++            .bind(&row.inn)
++            .bind(&row.ogrn)
++            .bind(sources)
++            .bind(tags)
++            .bind(branches)
++            .bind(dedupe)
+             .execute(&mut *tx)
+             .await
+             .map_err(|e| AppError::storage(format!("failed to persist {}: {e}", row.name)))?;
+@@ -118,7 +228,8 @@ impl SqliteStore {
+             r#"
+             SELECT id, name, category, address, rating, review_count,
+                    phones_json, email, website, socials_json, opening_status,
+-                   latitude, longitude, source_url, collected_at
++                   latitude, longitude, source_url, collected_at, inn, ogrn,
++                   sources_json, tags_json, branches_json, dedupe_json
+             FROM organizations
+             ORDER BY collected_at DESC
+             LIMIT ?
+@@ -133,55 +244,47 @@ impl SqliteStore {
+     }
+ }
+ 
++fn encode<T: serde::Serialize>(value: &T, label: &str) -> Result<String, AppError> {
++    serde_json::to_string(value)
++        .map_err(|e| AppError::storage(format!("failed to encode {label}: {e}")))
++}
++
+ fn decode_row(row: sqlx::sqlite::SqliteRow) -> Result<Organization, AppError> {
+-    let phones_json: String = row
+-        .try_get("phones_json")
+-        .map_err(|e| AppError::storage(e.to_string()))?;
+-    let socials_json: String = row
+-        .try_get("socials_json")
+-        .map_err(|e| AppError::storage(e.to_string()))?;
+-    let collected_at: String = row
+-        .try_get("collected_at")
+-        .map_err(|e| AppError::storage(e.to_string()))?;
++    let phones_json: String = row.try_get("phones_json").map_err(storage_error)?;
++    let socials_json: String = row.try_get("socials_json").map_err(storage_error)?;
++    let sources_json: String = row.try_get("sources_json").unwrap_or_else(|_| "[]".into());
++    let tags_json: String = row.try_get("tags_json").unwrap_or_else(|_| "[]".into());
++    let branches_json: String = row.try_get("branches_json").unwrap_or_else(|_| "[]".into());
++    let dedupe_json: String = row.try_get("dedupe_json").unwrap_or_else(|_| "{}".into());
+ 
+     Ok(Organization {
+-        id: row.try_get("id").map_err(|e| AppError::storage(e.to_string()))?,
+-        name: row
+-            .try_get("name")
+-            .map_err(|e| AppError::storage(e.to_string()))?,
+-        category: row
+-            .try_get("category")
+-            .map_err(|e| AppError::storage(e.to_string()))?,
+-        address: row
+-            .try_get("address")
+-            .map_err(|e| AppError::storage(e.to_string()))?,
+-        rating: row
+-            .try_get("rating")
+-            .map_err(|e| AppError::storage(e.to_string()))?,
++        id: row.try_get("id").map_err(storage_error)?,
++        name: row.try_get("name").map_err(storage_error)?,
++        category: row.try_get("category").map_err(storage_error)?,
++        address: row.try_get("address").map_err(storage_error)?,
++        rating: row.try_get("rating").map_err(storage_error)?,
+         review_count: row
+             .try_get::<Option<i64>, _>("review_count")
+-            .map_err(|e| AppError::storage(e.to_string()))?
++            .map_err(storage_error)?
+             .and_then(|value| u32::try_from(value).ok()),
+         phones: serde_json::from_str(&phones_json).unwrap_or_default(),
+-        email: row
+-            .try_get("email")
+-            .map_err(|e| AppError::storage(e.to_string()))?,
+-        website: row
+-            .try_get("website")
+-            .map_err(|e| AppError::storage(e.to_string()))?,
++        email: row.try_get("email").map_err(storage_error)?,
++        website: row.try_get("website").map_err(storage_error)?,
+         socials: serde_json::from_str(&socials_json).unwrap_or_default(),
+-        opening_status: row
+-            .try_get("opening_status")
+-            .map_err(|e| AppError::storage(e.to_string()))?,
+-        latitude: row
+-            .try_get("latitude")
+-            .map_err(|e| AppError::storage(e.to_string()))?,
+-        longitude: row
+-            .try_get("longitude")
+-            .map_err(|e| AppError::storage(e.to_string()))?,
+-        source_url: row
+-            .try_get("source_url")
+-            .map_err(|e| AppError::storage(e.to_string()))?,
+-        collected_at,
++        opening_status: row.try_get("opening_status").map_err(storage_error)?,
++        latitude: row.try_get("latitude").map_err(storage_error)?,
++        longitude: row.try_get("longitude").map_err(storage_error)?,
++        source_url: row.try_get("source_url").map_err(storage_error)?,
++        collected_at: row.try_get("collected_at").map_err(storage_error)?,
++        inn: row.try_get("inn").unwrap_or(None),
++        ogrn: row.try_get("ogrn").unwrap_or(None),
++        sources: serde_json::from_str(&sources_json).unwrap_or_default(),
++        tags: serde_json::from_str(&tags_json).unwrap_or_default(),
++        branches: serde_json::from_str(&branches_json).unwrap_or_default(),
++        dedupe: serde_json::from_str(&dedupe_json).unwrap_or_else(|_| DedupeInfo::default()),
+     })
+ }
++
++fn storage_error(error: sqlx::Error) -> AppError {
++    AppError::storage(error.to_string())
++}
+diff --git a/docs/adr/0004-multi-source-lead-resolution.md b/docs/adr/0004-multi-source-lead-resolution.md
+new file mode 100644
+index 0000000..29a3d98
+--- /dev/null
++++ b/docs/adr/0004-multi-source-lead-resolution.md
+@@ -0,0 +1,19 @@
++# ADR 0004 — Multi-source lead resolution
++
++## Decision
++
++Вынести контракт провайдеров в `provider-core`, хранить raw records отдельно и выполнять deterministic dedupe после сбора всех выбранных источников.
++
++## Why
++
++- новый каталог добавляется без изменения UI/application flow;
++- provenance не теряется;
++- повторный dedupe возможен без повторных сетевых запросов;
++- один заблокированный источник не ломает весь run.
++
++## Non-goals
++
++- обход CAPTCHA/403/429;
++- скрытая ротация прокси;
++- fuzzy auto-merge только по названию;
++- получение/использование чужих API-ключей.

@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1380" role="img" aria-labelledby="flow-title flow-desc">
+  <title id="flow-title">Как получается общий список компаний</title>
+  <desc id="flow-desc">Шесть шагов: от поискового запроса и выбора каталогов до сохранения общего списка в файл. Карточки из сайтов сравниваются и повторные объединяются по совпадающим данным.</desc>
+  <defs>
+    <marker id="flow-arrow" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+      <path d="M1 1 L7 4 L1 7 Z" fill="#6a717d"/>
+    </marker>
+    <style>
+      .title { font: 600 36px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #f2f4f7; }
+      .subtitle { font: 400 20px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #9aa2af; }
+      .step-title { font: 600 24px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #f2f4f7; }
+      .step-copy { font: 400 19px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #b9c0cb; }
+      .number { font: 600 20px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #dce6f5; }
+      .note { font: 400 17px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #b9c0cb; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="1380" rx="28" fill="#0f1115"/>
+  <text class="title" x="160" y="76">Как получается общий список компаний</text>
+  <text class="subtitle" x="160" y="112">От поискового запроса до файла на вашем компьютере.</text>
+
+  <g fill="none" stroke="#6a717d" stroke-width="2" marker-end="url(#flow-arrow)">
+    <path d="M600 276 V316"/>
+    <path d="M600 442 V482"/>
+    <path d="M600 608 V648"/>
+    <path d="M600 814 V854"/>
+    <path d="M600 1000 V1042"/>
+  </g>
+
+  <g>
+    <rect x="160" y="160" width="880" height="116" rx="18" fill="#181b21" stroke="#343b47" stroke-width="2"/>
+    <circle cx="220" cy="218" r="24" fill="#20242b"/>
+    <text class="number" x="220" y="225" text-anchor="middle">1</text>
+    <text class="step-title" x="272" y="211">Задайте поиск</text>
+    <text class="step-copy" x="272" y="244">Введите, кого искать, и выберите каталоги.</text>
+  </g>
+
+  <g>
+    <rect x="160" y="326" width="880" height="116" rx="18" fill="#181b21" stroke="#343b47" stroke-width="2"/>
+    <circle cx="220" cy="384" r="24" fill="#20242b"/>
+    <text class="number" x="220" y="391" text-anchor="middle">2</text>
+    <text class="step-title" x="272" y="377">Поиск по каталогам</text>
+    <text class="step-copy" x="272" y="410">2ГИС, Yell, Zoon и Rusprofile — на ваш выбор.</text>
+  </g>
+
+  <g>
+    <rect x="160" y="492" width="880" height="116" rx="18" fill="#181b21" stroke="#343b47" stroke-width="2"/>
+    <circle cx="220" cy="550" r="24" fill="#20242b"/>
+    <text class="number" x="220" y="557" text-anchor="middle">3</text>
+    <text class="step-title" x="272" y="543">Сохранение карточек</text>
+    <text class="step-copy" x="272" y="576">Карточка с каждого сайта сохраняется отдельно.</text>
+  </g>
+
+  <g>
+    <rect x="160" y="658" width="880" height="156" rx="18" fill="#181b21" stroke="#343b47" stroke-width="2"/>
+    <circle cx="220" cy="736" r="24" fill="#20242b"/>
+    <text class="number" x="220" y="743" text-anchor="middle">4</text>
+    <text class="step-title" x="272" y="713">Сравнение карточек</text>
+    <text class="step-copy" x="272" y="748">Сверяются ИНН, ОГРН, телефон и сайт.</text>
+    <text class="step-copy" x="272" y="779">Если их нет — название вместе с адресом.</text>
+  </g>
+
+  <g>
+    <rect x="160" y="864" width="880" height="136" rx="18" fill="#181b21" stroke="#343b47" stroke-width="2"/>
+    <circle cx="220" cy="932" r="24" fill="#20242b"/>
+    <text class="number" x="220" y="939" text-anchor="middle">5</text>
+    <text class="step-title" x="272" y="921">Общий список без повторов</text>
+    <text class="step-copy" x="272" y="955">Карточки объединяются при совпадении данных.</text>
+    <text class="step-copy" x="272" y="983">Одного похожего названия недостаточно.</text>
+  </g>
+
+  <g>
+    <rect x="160" y="1052" width="880" height="130" rx="18" fill="#181b21" stroke="#f4f4f5" stroke-width="2"/>
+    <circle cx="220" cy="1117" r="24" fill="#20242b"/>
+    <text class="number" x="220" y="1124" text-anchor="middle">6</text>
+    <text class="step-title" x="272" y="1106">Сохраните список в файл</text>
+    <text class="step-copy" x="272" y="1140">CSV, Excel или JSON — в папку «Загрузки».</text>
+  </g>
+
+  <rect x="160" y="1222" width="880" height="104" rx="16" fill="#151922" stroke="#343b47" stroke-width="2"/>
+  <text class="note" x="188" y="1265">Если сайт ограничит запросы или попросит проверку, поиск на нём</text>
+  <text class="note" x="188" y="1292">остановится. Остальные выбранные сайты продолжат работу.</text>
+</svg>
