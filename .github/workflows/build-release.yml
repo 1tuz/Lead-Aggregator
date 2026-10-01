@@ -21,10 +21,6 @@ jobs:
             runner: macos-15
             bundles: app,dmg
             artifact: target/release/bundle/dmg/*.dmg
-          - platform: macOS Intel
-            runner: macos-15-intel
-            bundles: app,dmg
-            artifact: target/release/bundle/dmg/*.dmg
           - platform: Linux
             runner: ubuntu-24.04
             bundles: deb
@@ -83,6 +79,7 @@ jobs:
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: 1tuz/Lead-Aggregator
           TAG: ${{ github.ref_name }}
         run: |
           if ! gh release view "$TAG" >/dev/null 2>&1; then
