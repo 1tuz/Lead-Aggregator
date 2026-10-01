@@ -16,13 +16,15 @@
 
 ## Установка
 
-Установите последнюю опубликованную сборку macOS одной командой в Терминале:
+Установите последнюю сборку macOS на Apple Silicon или Linux на Debian/Ubuntu x86_64 одной командой:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/1tuz/Lead-Aggregator/main/scripts/install-macos.sh | sh
+curl -fsSL https://raw.githubusercontent.com/1tuz/Lead-Aggregator/main/scripts/install.sh | bash
 ```
 
-Скрипт скачает `.dmg` из [последнего GitHub Release](https://github.com/1tuz/Lead-Aggregator/releases), выберет сборку для Apple Silicon или Intel и установит приложение в `~/Applications/Lead Aggregator.app`. Запуск из клона репозитория (`./scripts/install-macos.sh`) по-прежнему собирает приложение из исходников.
+Скрипт определит систему и архитектуру, скачает готовую сборку из [последнего GitHub Release](https://github.com/1tuz/Lead-Aggregator/releases) и установит её. На macOS приложение появится в `~/Applications/Lead Aggregator.app`; на Debian/Ubuntu установщик `.deb` попросит `sudo` для установки системного пакета.
+
+На Windows скачайте `.msi` из [последнего GitHub Release](https://github.com/1tuz/Lead-Aggregator/releases) и запустите его.
 
 Для ручной сборки macOS-версии нужны macOS 13+, Xcode Command Line Tools, Rust 1.96+, Node.js 22+ и pnpm 11+.
 
