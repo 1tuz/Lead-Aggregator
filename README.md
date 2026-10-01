@@ -22,7 +22,7 @@
 curl -fsSL https://raw.githubusercontent.com/1tuz/Lead-Aggregator/main/scripts/install.sh | bash
 ```
 
-Скрипт определит систему и архитектуру, скачает готовую сборку из [последнего GitHub Release](https://github.com/1tuz/Lead-Aggregator/releases) и установит её. На macOS приложение появится в `~/Applications/Lead Aggregator.app`; на Debian/Ubuntu установщик `.deb` попросит `sudo` для установки системного пакета.
+Скрипт определит систему и архитектуру, скачает готовую сборку из [GitHub Releases](https://github.com/1tuz/Lead-Aggregator/releases), установит и запустит приложение. Если в последнем релизе нет сборки для вашей системы, он возьмёт последнюю доступную. На macOS приложение появится в `~/Applications/Lead Aggregator.app`; на Debian/Ubuntu установщик `.deb` попросит `sudo` для установки системного пакета.
 
 На Windows скачайте `.msi` из [последнего GitHub Release](https://github.com/1tuz/Lead-Aggregator/releases) и запустите его.
 

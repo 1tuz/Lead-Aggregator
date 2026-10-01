@@ -39,24 +39,30 @@ case "$(uname -s)" in
   *) echo "This installer supports Apple Silicon macOS and x86_64 Debian/Ubuntu. Download the Windows .msi from https://github.com/${REPOSITORY}/releases." >&2; exit 1 ;;
 esac
 
-RELEASE_JSON="$(curl --fail --location --silent --show-error \
-  -H 'Accept: application/vnd.github+json' \
-  "https://api.github.com/repos/${REPOSITORY}/releases/latest")"
 ASSET_URL=""
-while IFS= read -r url; do
-  case "$url" in
-    *"$ASSET_SUFFIX") ASSET_URL="$url"; break ;;
-  esac
-done < <(printf '%s\n' "$RELEASE_JSON" \
-  | grep -Eo '"browser_download_url"[[:space:]]*:[[:space:]]*"[^"]+"' \
-  | sed -E 's/^[^:]+:[[:space:]]*"([^"]+)"$/\1/')
+for release_path in releases/latest 'releases?per_page=20'; do
+  RELEASE_JSON="$(curl --fail --location --silent --show-error \
+    -H 'Accept: application/vnd.github+json' \
+    "https://api.github.com/repos/${REPOSITORY}/${release_path}")"
+  while IFS= read -r url; do
+    case "$url" in
+      *"$ASSET_SUFFIX") ASSET_URL="$url"; break ;;
+    esac
+  done < <(printf '%s\n' "$RELEASE_JSON" \
+    | grep -Eo '"browser_download_url"[[:space:]]*:[[:space:]]*"[^"]+"' \
+    | sed -E 's/^[^:]+:[[:space:]]*"([^"]+)"$/\1/')
+  if [[ -n "$ASSET_URL" ]]; then
+    break
+  fi
+done
 
 if [[ -z "$ASSET_URL" ]]; then
-  echo "No ${ASSET_SUFFIX} installer found in the latest release: https://github.com/${REPOSITORY}/releases" >&2
+  echo "No ${ASSET_SUFFIX} installer found in recent releases: https://github.com/${REPOSITORY}/releases" >&2
   exit 1
 fi
 
 PACKAGE_PATH="${TEMP_DIR}/installer${ASSET_SUFFIX##*_}"
+printf 'Downloading: %s\n' "$ASSET_URL"
 curl --fail --location --silent --show-error "$ASSET_URL" -o "$PACKAGE_PATH"
 
 if [[ "$INSTALL_KIND" == macos ]]; then
@@ -69,6 +75,7 @@ if [[ "$INSTALL_KIND" == macos ]]; then
   [[ -d "$APP_SOURCE" ]] || { echo "The disk image does not contain ${APP_NAME}.app" >&2; exit 1; }
   ditto "$APP_SOURCE" "$INSTALL_DIR/${APP_NAME}.app"
   printf 'Installed: %s/%s.app\n' "$INSTALL_DIR" "$APP_NAME"
+  open "$INSTALL_DIR/${APP_NAME}.app"
 else
   if [[ "$EUID" -eq 0 ]]; then
     apt install --yes "$PACKAGE_PATH"
@@ -76,4 +83,5 @@ else
     command -v sudo >/dev/null 2>&1 || { echo "Run as root or install sudo to install the Debian package." >&2; exit 1; }
     sudo apt install --yes "$PACKAGE_PATH"
   fi
+  nohup /usr/bin/twogis-extractor-desktop </dev/null >/dev/null 2>&1 &
 fi
