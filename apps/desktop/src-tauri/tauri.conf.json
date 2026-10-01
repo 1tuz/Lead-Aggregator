@@ -29,18 +29,11 @@
   },
   "bundle": {
     "active": true,
-    "icon": [
-      "icons/icon.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
-    ],
-    "targets": [
-      "app",
-      "dmg"
-    ],
+    "icon": ["icons/icon.png", "icons/icon.icns", "icons/icon.ico"],
+    "targets": ["app", "dmg"],
     "category": "Utility",
     "shortDescription": "Local-first multi-source lead aggregator",
-    "longDescription": "A lightweight local-first macOS tool that aggregates public business directory data, preserves source provenance, deduplicates leads, stores them in SQLite, and exports CSV/XLSX/JSON without bundling Chromium.",
+    "longDescription": "A lightweight cross-platform desktop app that aggregates public business directory data, preserves source provenance, deduplicates leads, stores them in SQLite, and exports CSV/XLSX/JSON without bundling Chromium.",
     "macOS": {
       "minimumSystemVersion": "13.0"
     }
