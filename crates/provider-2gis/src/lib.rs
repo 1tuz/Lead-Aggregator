@@ -6,12 +6,12 @@ use async_trait::async_trait;
 use futures::{StreamExt, stream};
 use reqwest::{Client, StatusCode};
 use scraper::{Html, Selector};
-use tokio_util::sync::CancellationToken;
 use twogis_domain::{
-    AppError, ErrorKind, ProgressPhase, ScrapeProgress, SearchRequest, SourceKind,
+    AppError, ErrorKind, ProgressPhase, ProviderRunState, ScrapeProgress, SearchRequest, SourceKind,
 };
 use twogis_provider_core::{
-    DirectoryProvider, ProgressSink, ProviderOutput, ProviderPolicy, ProviderRuntime,
+    DirectoryProvider, ProgressSink, ProviderControl, ProviderOutput, ProviderPolicy,
+    ProviderRuntime,
 };
 use url::Url;
 
@@ -24,7 +24,7 @@ pub struct TwoGisHtmlProvider {
 impl TwoGisHtmlProvider {
     pub fn new() -> Result<Self, AppError> {
         let client = Client::builder()
-            .user_agent("lead-aggregator/0.2 (+local desktop app; public HTML only)")
+            .user_agent("lead-aggregator/0.4 (+local desktop app; public HTML only)")
             .timeout(Duration::from_secs(20))
             .build()
             .map_err(|e| AppError::network(format!("failed to create HTTP client: {e}")))?;
@@ -59,13 +59,20 @@ impl TwoGisHtmlProvider {
             .await
             .map_err(|e| AppError::network(format!("request failed for {url}: {e}")))?;
 
+        let retry_after = response
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<u64>().ok());
+
         match response.status() {
             StatusCode::TOO_MANY_REQUESTS => {
                 return Err(AppError::new(
                     ErrorKind::RateLimited,
-                    "2GIS returned HTTP 429. The app stops instead of bypassing the limit.",
+                    "2GIS returned HTTP 429; respecting the server rate limit",
                     true,
-                ));
+                )
+                .with_retry_after(retry_after));
             }
             StatusCode::FORBIDDEN => {
                 return Err(AppError::new(
@@ -88,12 +95,58 @@ impl TwoGisHtmlProvider {
             .map_err(|e| AppError::network(format!("failed to read {url}: {e}")))?;
         if is_challenge_html(&html) {
             return Err(AppError::new(
-                ErrorKind::Blocked,
-                "2GIS requested an anti-bot check; provider stopped",
+                ErrorKind::CaptchaRequired,
+                "2GIS requested a CAPTCHA/anti-bot check; provider stopped",
                 true,
             ));
         }
         Ok(html)
+    }
+
+    async fn fetch_with_backoff(
+        &self,
+        request: &SearchRequest,
+        runtime: &ProviderRuntime,
+        control: &ProviderControl,
+        progress: &ProgressSink,
+        url: &Url,
+    ) -> Result<String, AppError> {
+        let config = request.config_for(SourceKind::TwoGis);
+        for attempt in 0..=config.max_retries {
+            match runtime.run(control, self.fetch_html(url)).await {
+                Ok(html) => return Ok(html),
+                Err(err)
+                    if matches!(err.kind, ErrorKind::RateLimited)
+                        && attempt < config.max_retries =>
+                {
+                    let fallback = u64::from(config.backoff_base_seconds)
+                        .saturating_mul(1_u64 << attempt.min(3));
+                    let delay = err.retry_after_seconds.unwrap_or(fallback).clamp(5, 900);
+                    (progress)(ScrapeProgress {
+                        phase: ProgressPhase::Discovering,
+                        current: 0,
+                        total: None,
+                        message: format!("2GIS rate limit: retry in {delay}s"),
+                        source: Some(SourceKind::TwoGis),
+                        region: Some(request.region.clone()),
+                        state: Some(ProviderRunState::RateLimited),
+                        retry_after_seconds: Some(delay),
+                    });
+                    control.sleep(Duration::from_secs(delay)).await?;
+                }
+                Err(err)
+                    if matches!(
+                        err.kind,
+                        ErrorKind::Blocked | ErrorKind::CaptchaRequired | ErrorKind::RateLimited
+                    ) =>
+                {
+                    control.cancel();
+                    return Err(err);
+                }
+                Err(err) => return Err(err),
+            }
+        }
+        Err(AppError::network("2GIS retry loop exhausted"))
     }
 
     fn discover_firms(&self, html: &str) -> Vec<(String, String)> {
@@ -155,26 +208,33 @@ impl DirectoryProvider for TwoGisHtmlProvider {
         &self,
         request: &SearchRequest,
         progress: ProgressSink,
-        cancel: CancellationToken,
+        control: ProviderControl,
     ) -> Result<ProviderOutput, AppError> {
         request.validate()?;
-        let runtime = ProviderRuntime::for_request(self.policy(), request);
+        let config = request.config_for(SourceKind::TwoGis);
+        let runtime = ProviderRuntime::for_request(self.policy(), request, SourceKind::TwoGis);
 
         let mut candidates = Vec::<(String, String)>::new();
         let mut seen = HashSet::new();
 
-        for page in 1..=request.max_pages {
-            if cancel.is_cancelled() {
+        for page in 1..=config.max_pages {
+            if control.is_cancelled() {
                 return Err(AppError::cancelled());
             }
             (progress)(ScrapeProgress {
                 phase: ProgressPhase::Discovering,
                 current: u32::from(page),
-                total: Some(u32::from(request.max_pages)),
-                message: format!("Scanning search page {page}"),
+                total: Some(u32::from(config.max_pages)),
+                message: format!("2GIS: scanning page {page}"),
+                source: Some(SourceKind::TwoGis),
+                region: Some(request.region.clone()),
+                state: Some(ProviderRunState::Running),
+                retry_after_seconds: None,
             });
             let url = self.search_url(request, page)?;
-            let html = runtime.run(&cancel, self.fetch_html(&url)).await?;
+            let html = self
+                .fetch_with_backoff(request, &runtime, &control, &progress, &url)
+                .await?;
             let found = self.discover_firms(&html);
             if found.is_empty() {
                 break;
@@ -183,47 +243,41 @@ impl DirectoryProvider for TwoGisHtmlProvider {
             for candidate in found {
                 if seen.insert(candidate.0.clone()) {
                     candidates.push(candidate);
-                    if candidates.len() >= request.max_results as usize {
+                    if candidates.len() >= config.max_results as usize {
                         break;
                     }
                 }
             }
-            if candidates.len() >= request.max_results as usize || candidates.len() == before {
+            if candidates.len() >= config.max_results as usize || candidates.len() == before {
                 break;
             }
         }
 
-        candidates.truncate(request.max_results as usize);
+        candidates.truncate(config.max_results as usize);
         let total = candidates.len() as u32;
         let concurrency = runtime.concurrency();
         let provider = self.clone();
         let runtime_for_stream = runtime.clone();
         let progress_for_stream = progress.clone();
-        let provider_cancel = cancel.child_token();
-        let cancel_for_stream = provider_cancel.clone();
+        let control_for_stream = control.clone();
+        let request_for_stream = request.clone();
 
         let results = stream::iter(candidates.into_iter().enumerate())
             .map(move |(index, (url, fallback_name))| {
                 let provider = provider.clone();
                 let runtime = runtime_for_stream.clone();
                 let progress = progress_for_stream.clone();
-                let cancel = cancel_for_stream.clone();
+                let control = control_for_stream.clone();
+                let request = request_for_stream.clone();
                 async move {
-                    if cancel.is_cancelled() {
+                    if control.is_cancelled() {
                         return Err(AppError::cancelled());
                     }
                     let parsed_url = Url::parse(&url)
                         .map_err(|e| AppError::parse(format!("bad organization URL: {e}")))?;
-                    let html = match runtime.run(&cancel, provider.fetch_html(&parsed_url)).await {
-                        Ok(html) => html,
-                        Err(err)
-                            if matches!(err.kind, ErrorKind::RateLimited | ErrorKind::Blocked) =>
-                        {
-                            cancel.cancel();
-                            return Err(err);
-                        }
-                        Err(err) => return Err(err),
-                    };
+                    let html = provider
+                        .fetch_with_backoff(&request, &runtime, &control, &progress, &parsed_url)
+                        .await?;
                     let mut organization = parse::parse_firm_page(&url, &html)?;
                     organization.attach_source(SourceKind::TwoGis);
                     if organization.name.is_empty() {
@@ -234,6 +288,10 @@ impl DirectoryProvider for TwoGisHtmlProvider {
                         current: index as u32 + 1,
                         total: Some(total),
                         message: organization.name.clone(),
+                        source: Some(SourceKind::TwoGis),
+                        region: Some(request.region.clone()),
+                        state: Some(ProviderRunState::Running),
+                        retry_after_seconds: None,
                     });
                     Ok::<_, AppError>(organization)
                 }
@@ -242,20 +300,18 @@ impl DirectoryProvider for TwoGisHtmlProvider {
             .collect::<Vec<_>>()
             .await;
 
-        if cancel.is_cancelled() {
-            return Err(AppError::cancelled());
-        }
-
         let mut output = ProviderOutput::default();
         let mut terminal_error = None;
         for result in results {
             match result {
                 Ok(org) => output.organizations.push(org),
-                Err(err) if matches!(err.kind, ErrorKind::RateLimited | ErrorKind::Blocked) => {
+                Err(err)
+                    if matches!(
+                        err.kind,
+                        ErrorKind::RateLimited | ErrorKind::Blocked | ErrorKind::CaptchaRequired
+                    ) =>
+                {
                     terminal_error.get_or_insert(err);
-                }
-                Err(err) if matches!(err.kind, ErrorKind::Cancelled) && cancel.is_cancelled() => {
-                    return Err(err);
                 }
                 Err(err) if matches!(err.kind, ErrorKind::Cancelled) => {}
                 Err(err) => output.warnings.push(err.message),

@@ -2,6 +2,9 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use thiserror::Error;
 
+mod collection;
+pub use collection::*;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub enum SourceKind {
@@ -46,6 +49,10 @@ pub struct SearchRequest {
     pub request_delay_ms: u32,
     #[serde(default = "default_sources")]
     pub sources: Vec<SourceKind>,
+    #[serde(default)]
+    pub regions: Vec<String>,
+    #[serde(default)]
+    pub provider_configs: Vec<ProviderSearchConfig>,
 }
 
 impl Default for SearchRequest {
@@ -58,34 +65,38 @@ impl Default for SearchRequest {
             concurrency: 2,
             request_delay_ms: 650,
             sources: default_sources(),
+            regions: Vec::new(),
+            provider_configs: Vec::new(),
         }
     }
 }
 
 impl SearchRequest {
     pub fn validate(&self) -> Result<(), AppError> {
-        let region_ok = !self.region.is_empty()
-            && self.region.len() <= 64
-            && self
-                .region
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
-        if !region_ok {
+        let regions = self.effective_regions();
+        if regions.is_empty() || regions.len() > MAX_COLLECTION_REGIONS {
+            return Err(AppError::validation(format!(
+                "Select between 1 and {MAX_COLLECTION_REGIONS} regions/cities"
+            )));
+        }
+        if regions.iter().any(|region| !valid_region_slug(region)) {
             return Err(AppError::validation(
-                "Region must be a URL slug such as moscow, spb or kazan",
+                "Regions must be URL slugs such as moscow, spb or kazan",
             ));
         }
         let query = self.query.trim();
         if query.len() < 2 || query.len() > 160 {
             return Err(AppError::validation("Query must contain 2-160 characters"));
         }
-        if self.max_results == 0 || self.max_results > 5_000 {
-            return Err(AppError::validation(
-                "maxResults must be between 1 and 5000",
-            ));
+        if self.max_results == 0 || self.max_results > MAX_PROVIDER_RESULTS {
+            return Err(AppError::validation(format!(
+                "maxResults must be between 1 and {MAX_PROVIDER_RESULTS}"
+            )));
         }
-        if self.max_pages == 0 || self.max_pages > 100 {
-            return Err(AppError::validation("maxPages must be between 1 and 100"));
+        if self.max_pages == 0 || self.max_pages > MAX_PROVIDER_PAGES {
+            return Err(AppError::validation(format!(
+                "maxPages must be between 1 and {MAX_PROVIDER_PAGES}"
+            )));
         }
         if !(1..=8).contains(&self.concurrency) {
             return Err(AppError::validation("concurrency must be between 1 and 8"));
@@ -98,8 +109,48 @@ impl SearchRequest {
         if self.sources.is_empty() {
             return Err(AppError::validation("Select at least one source"));
         }
+        for config in &self.provider_configs {
+            config.validate()?;
+        }
         Ok(())
     }
+
+    pub fn effective_regions(&self) -> Vec<String> {
+        if self.regions.is_empty() {
+            vec![self.region.clone()]
+        } else {
+            let mut regions = self.regions.clone();
+            regions.sort();
+            regions.dedup();
+            regions
+        }
+    }
+
+    pub fn config_for(&self, source: SourceKind) -> ProviderSearchConfig {
+        self.provider_configs
+            .iter()
+            .find(|config| config.source == source)
+            .cloned()
+            .unwrap_or_else(|| ProviderSearchConfig {
+                source,
+                enabled: self.sources.contains(&source),
+                max_results: self.max_results,
+                max_pages: self.max_pages,
+                concurrency: self.concurrency,
+                request_delay_ms: self.request_delay_ms,
+                preset: CollectionPreset::Custom,
+                max_retries: 1,
+                backoff_base_seconds: 30,
+            })
+    }
+}
+
+fn valid_region_slug(region: &str) -> bool {
+    !region.is_empty()
+        && region.len() <= 64
+        && region
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq)]
@@ -198,6 +249,7 @@ pub struct RunSummary {
     pub warnings: Vec<String>,
     pub raw_records: u32,
     pub duplicates_merged: u32,
+    pub organization_count: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -220,6 +272,14 @@ pub struct ScrapeProgress {
     pub current: u32,
     pub total: Option<u32>,
     pub message: String,
+    #[serde(default)]
+    pub source: Option<SourceKind>,
+    #[serde(default)]
+    pub region: Option<String>,
+    #[serde(default)]
+    pub state: Option<ProviderRunState>,
+    #[serde(default)]
+    pub retry_after_seconds: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Type)]
@@ -265,6 +325,7 @@ pub enum ErrorKind {
     Network,
     RateLimited,
     Blocked,
+    CaptchaRequired,
     Parse,
     Storage,
     Export,
@@ -279,6 +340,8 @@ pub struct AppError {
     pub kind: ErrorKind,
     pub message: String,
     pub retryable: bool,
+    #[serde(default)]
+    pub retry_after_seconds: Option<u64>,
 }
 
 impl AppError {
@@ -287,7 +350,13 @@ impl AppError {
             kind,
             message: message.into(),
             retryable,
+            retry_after_seconds: None,
         }
+    }
+
+    pub fn with_retry_after(mut self, seconds: Option<u64>) -> Self {
+        self.retry_after_seconds = seconds;
+        self
     }
 
     pub fn validation(message: impl Into<String>) -> Self {

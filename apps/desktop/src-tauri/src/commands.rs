@@ -4,8 +4,8 @@ use chrono::Utc;
 use tauri::{Emitter, Manager, State};
 use tokio_util::sync::CancellationToken;
 use twogis_domain::{
-    AppError, ExportFormat, ExportReceipt, HealthInfo, Organization, RunSummary, ScrapeProgress,
-    SearchRequest, SearchRunInfo,
+    AppError, CollectionJobInfo, ExportFormat, ExportReceipt, HealthInfo, Organization,
+    RunResultsPage, RunSummary, ScrapeProgress, SearchRequest, SearchRunInfo, SourceKind,
 };
 use twogis_provider_core::ProgressSink;
 
@@ -40,6 +40,52 @@ pub async fn start_search(
         *guard = None;
     }
     result
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn resume_search(
+    state: State<'_, AppState>,
+    job_id: String,
+) -> Result<RunSummary, AppError> {
+    let token = CancellationToken::new();
+    {
+        let mut guard = state.cancellation.lock().await;
+        if let Some(previous) = guard.replace(token.clone()) {
+            previous.cancel();
+        }
+    }
+    let app = state.app.clone();
+    let progress: ProgressSink = Arc::new(move |payload: ScrapeProgress| {
+        let _ = app.emit("scrape-progress", payload);
+    });
+    let result = state
+        .service
+        .resume_search(&job_id, progress, token.clone())
+        .await;
+    let mut guard = state.cancellation.lock().await;
+    if guard.as_ref().is_some_and(|active| active == &token) {
+        *guard = None;
+    }
+    result
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn pause_provider(
+    state: State<'_, AppState>,
+    source: SourceKind,
+) -> Result<bool, AppError> {
+    Ok(state.service.pause_provider(source).await)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn resume_provider(
+    state: State<'_, AppState>,
+    source: SourceKind,
+) -> Result<bool, AppError> {
+    Ok(state.service.resume_provider(source).await)
 }
 
 #[tauri::command]
@@ -83,12 +129,34 @@ pub async fn results_for_run(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn recent_collection_jobs(
+    state: State<'_, AppState>,
+    limit: u32,
+) -> Result<Vec<CollectionJobInfo>, AppError> {
+    state.service.recent_collection_jobs(limit).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn results_for_run_page(
+    state: State<'_, AppState>,
+    run_id: String,
+    offset: u32,
+    limit: u32,
+) -> Result<RunResultsPage, AppError> {
+    state
+        .service
+        .results_for_run_page(&run_id, offset, limit)
+        .await
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn export_results(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
     run_id: String,
     format: ExportFormat,
-    limit: u32,
 ) -> Result<ExportReceipt, AppError> {
     let dir = app
         .path()
@@ -105,10 +173,7 @@ pub async fn export_results(
         extension
     );
     let path = dir.join(filename);
-    let rows = state
-        .service
-        .export_run(&path, format, &run_id, limit)
-        .await?;
+    let rows = state.service.export_run(&path, format, &run_id).await?;
     Ok(ExportReceipt {
         path: path.to_string_lossy().into_owned(),
         rows,

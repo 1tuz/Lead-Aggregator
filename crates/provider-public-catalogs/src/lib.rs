@@ -6,12 +6,13 @@ use futures::{StreamExt, stream};
 use regex::Regex;
 use reqwest::{Client, StatusCode};
 use scraper::{Html, Selector};
-use tokio_util::sync::CancellationToken;
 use twogis_domain::{
-    AppError, ErrorKind, Organization, ProgressPhase, ScrapeProgress, SearchRequest, SourceKind,
+    AppError, ErrorKind, Organization, ProgressPhase, ProviderRunState, ScrapeProgress,
+    SearchRequest, SourceKind,
 };
 use twogis_provider_core::{
-    DirectoryProvider, ProgressSink, ProviderOutput, ProviderPolicy, ProviderRuntime,
+    DirectoryProvider, ProgressSink, ProviderControl, ProviderOutput, ProviderPolicy,
+    ProviderRuntime,
 };
 use url::Url;
 
@@ -23,7 +24,7 @@ struct SafeHttp {
 impl SafeHttp {
     fn new() -> Result<Self, AppError> {
         let client = Client::builder()
-            .user_agent("lead-aggregator/0.2 (+local desktop app; public HTML only)")
+            .user_agent("lead-aggregator/0.4 (+local desktop app; public HTML only)")
             .timeout(Duration::from_secs(25))
             .build()
             .map_err(|e| AppError::network(format!("failed to create HTTP client: {e}")))?;
@@ -41,16 +42,23 @@ impl SafeHttp {
                 AppError::network(format!("{} request failed for {url}: {e}", source.label()))
             })?;
 
+        let retry_after = response
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<u64>().ok());
+
         match response.status() {
             StatusCode::TOO_MANY_REQUESTS => {
                 return Err(AppError::new(
                     ErrorKind::RateLimited,
                     format!(
-                        "{} returned HTTP 429; provider paused without bypass attempts",
+                        "{} returned HTTP 429; respecting Retry-After/backoff",
                         source.label()
                     ),
                     true,
-                ));
+                )
+                .with_retry_after(retry_after));
             }
             StatusCode::FORBIDDEN => {
                 return Err(AppError::new(
@@ -81,15 +89,65 @@ impl SafeHttp {
             || lower.contains("проверка безопасности")
         {
             return Err(AppError::new(
-                ErrorKind::Blocked,
+                ErrorKind::CaptchaRequired,
                 format!(
-                    "{} requested an anti-bot check; provider stopped",
+                    "{} requested a CAPTCHA/anti-bot check; provider stopped",
                     source.label()
                 ),
                 true,
             ));
         }
         Ok(body)
+    }
+
+    async fn fetch_with_backoff(
+        &self,
+        source: SourceKind,
+        request: &SearchRequest,
+        runtime: &ProviderRuntime,
+        control: &ProviderControl,
+        progress: &ProgressSink,
+        url: &Url,
+    ) -> Result<String, AppError> {
+        let config = request.config_for(source);
+        for attempt in 0..=config.max_retries {
+            match runtime.run(control, self.fetch(source, url)).await {
+                Ok(body) => return Ok(body),
+                Err(err)
+                    if matches!(err.kind, ErrorKind::RateLimited)
+                        && attempt < config.max_retries =>
+                {
+                    let fallback = u64::from(config.backoff_base_seconds)
+                        .saturating_mul(1_u64 << attempt.min(3));
+                    let delay = err.retry_after_seconds.unwrap_or(fallback).clamp(5, 900);
+                    (progress)(ScrapeProgress {
+                        phase: ProgressPhase::Discovering,
+                        current: 0,
+                        total: None,
+                        message: format!("{} rate limit: retry in {delay}s", source.label()),
+                        source: Some(source),
+                        region: Some(request.region.clone()),
+                        state: Some(ProviderRunState::RateLimited),
+                        retry_after_seconds: Some(delay),
+                    });
+                    control.sleep(Duration::from_secs(delay)).await?;
+                }
+                Err(err)
+                    if matches!(
+                        err.kind,
+                        ErrorKind::Blocked | ErrorKind::CaptchaRequired | ErrorKind::RateLimited
+                    ) =>
+                {
+                    control.cancel();
+                    return Err(err);
+                }
+                Err(err) => return Err(err),
+            }
+        }
+        Err(AppError::network(format!(
+            "{} retry loop exhausted",
+            source.label()
+        )))
     }
 }
 
@@ -145,20 +203,20 @@ impl DirectoryProvider for YellHtmlProvider {
         &self,
         request: &SearchRequest,
         progress: ProgressSink,
-        cancel: CancellationToken,
+        control: ProviderControl,
     ) -> Result<ProviderOutput, AppError> {
-        let runtime = ProviderRuntime::for_request(self.policy(), request);
+        let runtime = ProviderRuntime::for_request(self.policy(), request, SourceKind::Yell);
         let candidates = collect_candidates(
             self,
             request,
             progress.clone(),
-            cancel.clone(),
+            control.clone(),
             runtime.clone(),
             |provider, page| provider.search_url(request, page),
             |provider, html| provider.discover(request, html),
         )
         .await?;
-        enrich_candidates(self, candidates, progress, cancel, runtime).await
+        enrich_candidates(self, request, candidates, progress, control, runtime).await
     }
 }
 
@@ -225,20 +283,20 @@ impl DirectoryProvider for ZoonHtmlProvider {
         &self,
         request: &SearchRequest,
         progress: ProgressSink,
-        cancel: CancellationToken,
+        control: ProviderControl,
     ) -> Result<ProviderOutput, AppError> {
-        let runtime = ProviderRuntime::for_request(self.policy(), request);
+        let runtime = ProviderRuntime::for_request(self.policy(), request, SourceKind::Zoon);
         let candidates = collect_candidates(
             self,
             request,
             progress.clone(),
-            cancel.clone(),
+            control.clone(),
             runtime.clone(),
             |provider, page| provider.search_url(request, page),
             |provider, html| provider.discover(html),
         )
         .await?;
-        enrich_candidates(self, candidates, progress, cancel, runtime).await
+        enrich_candidates(self, request, candidates, progress, control, runtime).await
     }
 }
 
@@ -296,20 +354,20 @@ impl DirectoryProvider for RusprofileHtmlProvider {
         &self,
         request: &SearchRequest,
         progress: ProgressSink,
-        cancel: CancellationToken,
+        control: ProviderControl,
     ) -> Result<ProviderOutput, AppError> {
-        let runtime = ProviderRuntime::for_request(self.policy(), request);
+        let runtime = ProviderRuntime::for_request(self.policy(), request, SourceKind::Rusprofile);
         let candidates = collect_candidates(
             self,
             request,
             progress.clone(),
-            cancel.clone(),
+            control.clone(),
             runtime.clone(),
             |provider, page| provider.search_url(request, page),
             |provider, html| provider.discover(html),
         )
         .await?;
-        enrich_candidates(self, candidates, progress, cancel, runtime).await
+        enrich_candidates(self, request, candidates, progress, control, runtime).await
     }
 }
 
@@ -337,7 +395,7 @@ async fn collect_candidates<P, SearchUrl, Discover>(
     provider: &P,
     request: &SearchRequest,
     progress: ProgressSink,
-    cancel: CancellationToken,
+    control: ProviderControl,
     runtime: ProviderRuntime,
     search_url: SearchUrl,
     discover: Discover,
@@ -347,46 +405,60 @@ where
     SearchUrl: Fn(&P, u16) -> Result<Url, AppError>,
     Discover: Fn(&P, &str) -> Vec<Url>,
 {
+    let config = request.config_for(provider.source());
     let mut seen = HashSet::new();
     let mut candidates = Vec::new();
 
-    for page in 1..=request.max_pages {
-        if cancel.is_cancelled() {
+    for page in 1..=config.max_pages {
+        if control.is_cancelled() {
             return Err(AppError::cancelled());
         }
         (progress)(ScrapeProgress {
             phase: ProgressPhase::Discovering,
             current: u32::from(page),
-            total: Some(u32::from(request.max_pages)),
+            total: Some(u32::from(config.max_pages)),
             message: format!("{}: страница {page}", provider.source().label()),
+            source: Some(provider.source()),
+            region: Some(request.region.clone()),
+            state: Some(ProviderRunState::Running),
+            retry_after_seconds: None,
         });
         let url = search_url(provider, page)?;
-        let html = runtime
-            .run(&cancel, provider.http().fetch(provider.source(), &url))
+        let html = provider
+            .http()
+            .fetch_with_backoff(
+                provider.source(),
+                request,
+                &runtime,
+                &control,
+                &progress,
+                &url,
+            )
             .await?;
         let found = discover(provider, &html);
         let before = candidates.len();
         for url in found {
             if seen.insert(url.to_string()) {
                 candidates.push(url);
-                if candidates.len() >= request.max_results as usize {
+                if candidates.len() >= config.max_results as usize {
                     break;
                 }
             }
         }
-        if candidates.len() >= request.max_results as usize || candidates.len() == before {
+        if candidates.len() >= config.max_results as usize || candidates.len() == before {
             break;
         }
     }
-    candidates.truncate(request.max_results as usize);
+    candidates.truncate(config.max_results as usize);
     Ok(candidates)
 }
 
 async fn enrich_candidates<P: PublicCatalog>(
     provider: &P,
+    request: &SearchRequest,
     candidates: Vec<Url>,
     progress: ProgressSink,
-    cancel: CancellationToken,
+    control: ProviderControl,
     runtime: ProviderRuntime,
 ) -> Result<ProviderOutput, AppError> {
     let total = candidates.len() as u32;
@@ -394,37 +466,35 @@ async fn enrich_candidates<P: PublicCatalog>(
     let provider = provider.clone();
     let runtime_for_stream = runtime.clone();
     let progress_for_stream = progress.clone();
-    let provider_cancel = cancel.child_token();
-    let cancel_for_stream = provider_cancel.clone();
+    let control_for_stream = control.clone();
+    let request_for_stream = request.clone();
 
     let results = stream::iter(candidates.into_iter().enumerate())
         .map(move |(index, url)| {
             let provider = provider.clone();
             let runtime = runtime_for_stream.clone();
             let progress = progress_for_stream.clone();
-            let cancel = cancel_for_stream.clone();
+            let control = control_for_stream.clone();
+            let request = request_for_stream.clone();
             async move {
-                if cancel.is_cancelled() {
+                if control.is_cancelled() {
                     return Err(AppError::cancelled());
                 }
                 let source = provider.source();
-                let html = match runtime
-                    .run(&cancel, provider.http().fetch(source, &url))
-                    .await
-                {
-                    Ok(html) => html,
-                    Err(err) if matches!(err.kind, ErrorKind::RateLimited | ErrorKind::Blocked) => {
-                        cancel.cancel();
-                        return Err(err);
-                    }
-                    Err(err) => return Err(err),
-                };
+                let html = provider
+                    .http()
+                    .fetch_with_backoff(source, &request, &runtime, &control, &progress, &url)
+                    .await?;
                 let row = parse_public_profile(source, &url, &html)?;
                 (progress)(ScrapeProgress {
                     phase: ProgressPhase::Enriching,
                     current: index as u32 + 1,
                     total: Some(total),
                     message: format!("{}: {}", source.label(), row.name),
+                    source: Some(source),
+                    region: Some(request.region.clone()),
+                    state: Some(ProviderRunState::Running),
+                    retry_after_seconds: None,
                 });
                 Ok::<_, AppError>(row)
             }
@@ -438,11 +508,13 @@ async fn enrich_candidates<P: PublicCatalog>(
     for result in results {
         match result {
             Ok(row) => output.organizations.push(row),
-            Err(err) if matches!(err.kind, ErrorKind::RateLimited | ErrorKind::Blocked) => {
+            Err(err)
+                if matches!(
+                    err.kind,
+                    ErrorKind::RateLimited | ErrorKind::Blocked | ErrorKind::CaptchaRequired
+                ) =>
+            {
                 terminal_error.get_or_insert(err);
-            }
-            Err(err) if matches!(err.kind, ErrorKind::Cancelled) && cancel.is_cancelled() => {
-                return Err(err);
             }
             Err(err) if matches!(err.kind, ErrorKind::Cancelled) => {}
             Err(err) => output.warnings.push(err.message),

@@ -16,8 +16,9 @@ use twogis_storage_sqlite::SqliteStore;
 
 use crate::{
     commands::{
-        cancel_search, export_results, health, recent_results, recent_runs, results_for_run,
-        start_search,
+        cancel_search, export_results, health, pause_provider, recent_collection_jobs,
+        recent_results, recent_runs, results_for_run, results_for_run_page, resume_provider,
+        resume_search, start_search,
     },
     state::AppState,
 };
@@ -25,10 +26,15 @@ use crate::{
 fn specta_builder() -> Builder<Wry> {
     Builder::<Wry>::new().commands(collect_commands![
         start_search,
+        resume_search,
+        pause_provider,
+        resume_provider,
         cancel_search,
         recent_results,
         recent_runs,
+        recent_collection_jobs,
         results_for_run,
+        results_for_run_page,
         export_results,
         health
     ])

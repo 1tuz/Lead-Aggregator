@@ -1,3 +1,5 @@
+mod jobs;
+
 use std::path::Path;
 
 use sqlx::{
@@ -26,6 +28,7 @@ impl SqliteStore {
             .map_err(|e| AppError::storage(format!("failed to open SQLite database: {e}")))?;
         let store = Self { pool };
         store.migrate().await?;
+        store.migrate_collection_jobs().await?;
         Ok(store)
     }
 
@@ -897,6 +900,7 @@ mod tests {
             warnings: Vec::new(),
             raw_records: 1,
             duplicates_merged: 0,
+            organization_count: 1,
         };
         store
             .record_run(&summary, &SearchRequest::default())

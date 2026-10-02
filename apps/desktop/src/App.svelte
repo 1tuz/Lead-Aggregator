@@ -2,34 +2,37 @@
   import { listen } from '@tauri-apps/api/event';
   import { CircleStop, Database, Download, Moon, PanelLeft, Play, Sun } from 'lucide-svelte';
   import { onMount } from 'svelte';
-  import { api, errorMessage, type ExportFormat, type HealthInfo, type Organization, type SearchRunInfo, type SourceKind } from './lib/ipc';
+  import { api, errorMessage, type CollectionJobInfo, type ExportFormat, type HealthInfo, type Organization, type ProviderSearchConfig, type ProviderStatus, type ScrapeProgress, type SearchRunInfo, type SourceKind } from './lib/ipc';
   import { citySlug, normalizePlaceName, regionCityCount, russianCities, russianRegions, type RussianCity } from './lib/geography';
   import LeadTable from './lib/components/LeadTable.svelte';
+  import ProviderControls from './lib/components/ProviderControls.svelte';
+  import ProviderStatusPanel from './lib/components/ProviderStatusPanel.svelte';
 
-  type Progress = { phase: 'discovering' | 'enriching' | 'resolving' | 'saving' | 'done'; current: number; total: number | null; message: string };
-  const sourceOptions: { id: SourceKind; label: string; note: string }[] = [
-    { id: 'twoGis', label: '2GIS', note: 'локальный бизнес' },
-    { id: 'yell', label: 'Yell', note: 'каталог компаний' },
-    { id: 'zoon', label: 'Zoon', note: 'услуги и малый бизнес' },
-    { id: 'rusprofile', label: 'Rusprofile', note: 'юрлица и реквизиты' },
+  const allSources: SourceKind[] = ['twoGis', 'yell', 'zoon', 'rusprofile'];
+  const initialProviderConfigs: ProviderSearchConfig[] = [
+    { source: 'twoGis', enabled: true, maxResults: 10000, maxPages: 500, concurrency: 3, requestDelayMs: 800, preset: 'normal', maxRetries: 1, backoffBaseSeconds: 30 },
+    { source: 'yell', enabled: true, maxResults: 7500, maxPages: 500, concurrency: 2, requestDelayMs: 1200, preset: 'normal', maxRetries: 1, backoffBaseSeconds: 45 },
+    { source: 'zoon', enabled: false, maxResults: 5000, maxPages: 400, concurrency: 1, requestDelayMs: 1800, preset: 'normal', maxRetries: 1, backoffBaseSeconds: 60 },
+    { source: 'rusprofile', enabled: false, maxResults: 10000, maxPages: 1000, concurrency: 1, requestDelayMs: 3000, preset: 'normal', maxRetries: 1, backoffBaseSeconds: 90 },
   ];
 
   let region = '';
-  let locationText = 'Все регионы';
+  let locationText = '';
   let selectedCity: RussianCity | null = null;
   let regionFilter = '';
-  let allRegionsMode = true;
+  let allRegionsMode = false;
   let locationSuggestionsOpen = false;
   let activeSuggestion = 0;
   let locationPicker: HTMLDivElement;
   let query = 'автосервис';
-  let maxResults = 100;
-  let maxPages = 5;
-  let concurrency = 2;
-  let delay = 650;
-  let selectedSources: SourceKind[] = ['twoGis', 'yell'];
+  let providerConfigs: ProviderSearchConfig[] = initialProviderConfigs;
+  let providerStatuses: ProviderStatus[] = [];
   let rows: Organization[] = [];
+  let totalRows = 0;
+  let pageOffset = 0;
+  const pageSize = 500;
   let runs: SearchRunInfo[] = [];
+  let jobs: CollectionJobInfo[] = [];
   let currentRunId: string | null = null;
   let rawRecords = 0;
   let duplicatesMerged = 0;
@@ -58,6 +61,14 @@
     ...matchingRegions.map((name) => ({ type: 'region' as const, name })),
     ...matchingCities.map((city) => ({ type: 'city' as const, city })),
   ];
+  $: targetRegions = selectedCity
+    ? [citySlug(selectedCity.name)]
+    : regionFilter
+      ? [...new Set(russianCities.filter((city) => city.region === regionFilter || city.autonomousDistrict === regionFilter).map((city) => citySlug(city.name)))]
+      : allRegionsMode
+        ? [...new Set(russianCities.map((city) => citySlug(city.name)))]
+        : [];
+  $: selectedSources = providerConfigs.filter((config) => config.enabled).map((config) => config.source);
 
   function handleKeydown(event: KeyboardEvent) {
     if (locationSuggestionsOpen && suggestions.length > 0) {
@@ -82,10 +93,24 @@
     applyTheme();
     void api.health().then((value) => (health = value)).catch(() => undefined);
     void loadRecentRuns().catch(() => undefined);
-    const unlisten = listen<Progress>('scrape-progress', ({ payload }) => {
+    const unlisten = listen<ScrapeProgress>('scrape-progress', ({ payload }) => {
       message = payload.message;
-      if (payload.total && payload.total > 0) progress = Math.min(100, Math.round((payload.current / payload.total) * 100));
-      else if (payload.phase === 'done') progress = 100;
+      if (!payload.source) {
+        if (payload.phase === 'done') progress = 100;
+        else if (payload.total && payload.total > 0) progress = Math.min(99, Math.round((payload.current / payload.total) * 100));
+      }
+      if (payload.source) {
+        const status: ProviderStatus = {
+          source: payload.source,
+          region: payload.region ?? '',
+          state: payload.state ?? 'running',
+          current: payload.current,
+          total: payload.total,
+          message: payload.message,
+          retryAfterSeconds: payload.retryAfterSeconds,
+        };
+        providerStatuses = [...providerStatuses.filter((item) => item.source !== status.source), status];
+      }
     });
     const closeLocationSuggestions = (event: PointerEvent) => {
       if (locationPicker && !locationPicker.contains(event.target as Node)) locationSuggestionsOpen = false;
@@ -129,57 +154,108 @@
     localStorage.setItem('theme', theme);
   }
   function toggleTheme() { theme = theme === 'frost' ? 'graphite' : 'frost'; applyTheme(); }
-  function toggleSource(source: SourceKind) {
-    selectedSources = selectedSources.includes(source)
-      ? selectedSources.filter((item) => item !== source)
-      : [...selectedSources, source];
-  }
   function runLabel(run: SearchRunInfo) {
     const when = new Date(run.finishedAt).toLocaleString();
     return `${when} · ${run.request.query}`;
   }
 
-  async function loadRun(runId: string) {
+  async function loadRun(runId: string, offset = 0) {
     const run = runs.find((item) => item.runId === runId);
-    rows = await api.resultsForRun(runId, 5000);
+    const page = await api.resultsForRunPage(runId, offset, pageSize);
+    rows = page.items;
+    totalRows = page.total;
+    pageOffset = page.offset;
     currentRunId = runId;
     if (run) {
       rawRecords = run.rawRecords;
       duplicatesMerged = run.duplicatesMerged;
       warnings = run.warnings;
-      message = `${run.request.query} · уникальных лидов: ${rows.length}`;
+      message = `${run.request.query} · уникальных лидов: ${totalRows.toLocaleString()}`;
     }
   }
 
   async function loadRecentRuns(selectRunId?: string) {
-    runs = await api.recentRuns(30);
+    [runs, jobs] = await Promise.all([api.recentRuns(30), api.recentCollectionJobs(30)]);
     const target = selectRunId ?? currentRunId ?? runs[0]?.runId;
     if (target) {
       await loadRun(target);
       return;
     }
     rows = await api.recentResults(300);
+    totalRows = rows.length;
     currentRunId = null;
     if (rows.length > 0) message = 'Загружены результаты старой версии · выполни новый поиск для экспорта по запуску';
   }
 
+  function buildRequest() {
+    const active = providerConfigs.filter((config) => config.enabled);
+    const regions = targetRegions;
+    return {
+      region: regions[0] ?? '',
+      regions,
+      query,
+      maxResults: Math.max(1, ...active.map((config) => config.maxResults)),
+      maxPages: Math.max(1, ...active.map((config) => config.maxPages)),
+      concurrency: Math.max(1, ...active.map((config) => config.concurrency)),
+      requestDelayMs: Math.max(250, Math.min(...active.map((config) => config.requestDelayMs))),
+      sources: active.map((config) => config.source),
+      providerConfigs,
+    };
+  }
+
+  function applySummary(summary: Awaited<ReturnType<typeof api.startSearch>>) {
+    currentRunId = summary.runId;
+    rows = summary.organizations;
+    totalRows = summary.organizationCount;
+    pageOffset = 0;
+    warnings = summary.warnings;
+    rawRecords = summary.rawRecords;
+    duplicatesMerged = summary.duplicatesMerged;
+    progress = 100;
+    message = `Уникальных лидов: ${summary.organizationCount.toLocaleString()} · исходных записей: ${summary.rawRecords.toLocaleString()} · объединено: ${summary.duplicatesMerged.toLocaleString()}`;
+  }
+
   async function runSearch() {
-    running = true; error = ''; warnings = []; progress = 1; message = 'Запуск поиска';
+    running = true; error = ''; warnings = []; providerStatuses = []; progress = 1; message = 'Запуск поиска';
     try {
-      const summary = await api.startSearch({ region, query, maxResults, maxPages, concurrency, requestDelayMs: delay, sources: selectedSources });
-      currentRunId = summary.runId;
-      rows = summary.organizations; warnings = summary.warnings; progress = 100;
-      rawRecords = summary.rawRecords; duplicatesMerged = summary.duplicatesMerged;
-      runs = await api.recentRuns(30);
-      message = `Уникальных лидов: ${rows.length} · исходных записей: ${summary.rawRecords} · объединено: ${summary.duplicatesMerged}`;
+      const summary = await api.startSearch(buildRequest());
+      applySummary(summary);
+      [runs, jobs] = await Promise.all([api.recentRuns(30), api.recentCollectionJobs(30)]);
     } catch (e) { error = errorMessage(e); message = 'Поиск остановлен'; }
     finally { running = false; }
+  }
+
+  async function resumeJob(jobId: string) {
+    running = true; error = ''; providerStatuses = []; message = 'Возобновление сбора';
+    try {
+      const summary = await api.resumeSearch(jobId);
+      applySummary(summary);
+      [runs, jobs] = await Promise.all([api.recentRuns(30), api.recentCollectionJobs(30)]);
+    } catch (e) { error = errorMessage(e); message = 'Возобновление остановлено'; }
+    finally { running = false; }
+  }
+
+  async function pauseProvider(source: SourceKind) {
+    if (await api.pauseProvider(source)) {
+      providerStatuses = providerStatuses.map((item) => item.source === source ? { ...item, state: 'paused' } : item);
+    }
+  }
+
+  async function resumeProvider(source: SourceKind) {
+    if (await api.resumeProvider(source)) {
+      providerStatuses = providerStatuses.map((item) => item.source === source ? { ...item, state: 'running' } : item);
+    }
+  }
+
+  async function loadPage(offset: number) {
+    if (!currentRunId) return;
+    await loadRun(currentRunId, Math.max(0, offset));
   }
   async function cancelSearch() { await api.cancelSearch(); message = 'Остановка…'; }
   async function exportRows(format: ExportFormat) {
     error = '';
     if (!currentRunId) { error = 'Сначала выбери или выполни поиск'; return; }
-    try { const receipt = await api.exportResults(currentRunId, format, 5000); message = `Экспортировано ${receipt.rows}: ${receipt.path}`; }
+    try { const receipt = await api.exportResults(currentRunId, format); message = `Экспортировано ${receipt.rows.toLocaleString()}: ${receipt.path}`; }
     catch (e) { error = errorMessage(e); }
   }
 </script>
@@ -241,38 +317,28 @@
             <div class="location-suggestions no-suggestions">Ничего не найдено</div>
           {/if}
         </div>
-        {#if selectedCity}<small class="selected-location">{selectedCity.region}{selectedCity.autonomousDistrict ? ` · ${selectedCity.autonomousDistrict}` : ''}</small>{/if}
+        {#if selectedCity}<small class="selected-location">{selectedCity.region}{selectedCity.autonomousDistrict ? ` · ${selectedCity.autonomousDistrict}` : ''}</small>
+        {:else if regionFilter}<small class="selected-location">{regionFilter} · весь регион · {targetRegions.length} городов</small>
+        {:else if allRegionsMode}<small class="selected-location">Вся Россия · {targetRegions.length} городов</small>{/if}
       </div>
       <label><span>Что искать</span><input bind:value={query} placeholder="автосервис" disabled={running} /></label>
 
       <details class="settings-disclosure">
-        <summary>Настройки сбора</summary>
+        <summary>Настройки источников</summary>
         <div class="settings-content">
-          <div class="source-block">
-            <span class="field-title">Источники</span>
-            {#each sourceOptions as source}
-              <label class="source-row">
-                <input type="checkbox" checked={selectedSources.includes(source.id)} onchange={() => toggleSource(source.id)} disabled={running || (health ? !health.availableSources.includes(source.id) : false)} />
-                <span><strong>{source.label}</strong><small>{source.note}</small></span>
-              </label>
-            {/each}
-          </div>
-
-          <div class="field-grid">
-            <label><span>Макс. на источник</span><input type="number" min="1" max="5000" bind:value={maxResults} disabled={running} /></label>
-            <label><span>Страниц</span><input type="number" min="1" max="100" bind:value={maxPages} disabled={running} /></label>
-          </div>
-          <div class="field-grid">
-            <label><span>Параллельно</span><input type="number" min="1" max="8" bind:value={concurrency} disabled={running} /></label>
-            <label><span>Пауза, мс</span><input type="number" min="250" step="50" bind:value={delay} disabled={running} /></label>
-          </div>
+          <ProviderControls
+            configs={providerConfigs}
+            {running}
+            availableSources={health?.availableSources ?? allSources}
+            onChange={(configs) => (providerConfigs = configs)}
+          />
         </div>
       </details>
 
       {#if running}
         <button class="primary danger" onclick={cancelSearch}><CircleStop size={16} /> Остановить</button>
       {:else}
-        <button class="primary" onclick={runSearch} disabled={!query.trim() || !selectedCity || !region.trim() || selectedSources.length === 0}><Play size={16} fill="currentColor" /> Собрать лиды</button>
+        <button class="primary" onclick={runSearch} disabled={!query.trim() || targetRegions.length === 0 || selectedSources.length === 0}><Play size={16} fill="currentColor" /> Собрать лиды</button>
       {/if}
     </div>
 
@@ -302,9 +368,9 @@
             {/each}
           </select>
         {/if}
-        <button onclick={() => exportRows('csv')} disabled={rows.length === 0 || running || !currentRunId}><Download size={15} /> CSV</button>
-        <button onclick={() => exportRows('xlsx')} disabled={rows.length === 0 || running || !currentRunId}><Download size={15} /> XLSX</button>
-        <button onclick={() => exportRows('json')} disabled={rows.length === 0 || running || !currentRunId}><Download size={15} /> JSON</button>
+        <button onclick={() => exportRows('csv')} disabled={totalRows === 0 || running || !currentRunId}><Download size={15} /> CSV</button>
+        <button onclick={() => exportRows('xlsx')} disabled={totalRows === 0 || running || !currentRunId}><Download size={15} /> XLSX</button>
+        <button onclick={() => exportRows('json')} disabled={totalRows === 0 || running || !currentRunId}><Download size={15} /> JSON</button>
       </div>
     </header>
 
@@ -319,8 +385,17 @@
       <div class="notice warning">Предупреждений источников: {warnings.length}. Первый: {warnings[0]}</div>
     {/if}
 
+    <ProviderStatusPanel
+      statuses={providerStatuses}
+      {jobs}
+      {running}
+      onPause={(source) => void pauseProvider(source)}
+      onResume={(source) => void resumeProvider(source)}
+      onResumeJob={(jobId) => void resumeJob(jobId)}
+    />
+
     <section class="stats">
-      <div><Database size={16} /><strong>{rows.length}</strong><span>уникальных лидов</span></div>
+      <div><Database size={16} /><strong>{totalRows}</strong><span>уникальных лидов</span></div>
       <div><strong>{rows.filter((r) => r.sources.length > 1).length}</strong><span>из 2+ источников</span></div>
       <div><strong>{rows.filter((r) => r.dedupe.possibleDuplicate).length}</strong><span>возможных дублей</span></div>
       <div><strong>{rawRecords}</strong><span>исходных записей</span></div>
@@ -328,6 +403,13 @@
     </section>
 
     <LeadTable {rows} />
+    {#if totalRows > pageSize}
+      <div class="pager">
+        <button disabled={pageOffset === 0 || running} onclick={() => void loadPage(pageOffset - pageSize)}>Назад</button>
+        <span>{(pageOffset + 1).toLocaleString()}–{Math.min(pageOffset + rows.length, totalRows).toLocaleString()} из {totalRows.toLocaleString()}</span>
+        <button disabled={pageOffset + pageSize >= totalRows || running} onclick={() => void loadPage(pageOffset + pageSize)}>Далее</button>
+      </div>
+    {/if}
   </main>
 </div>
 
@@ -394,5 +476,7 @@
   .stats > div { min-width: 0; height: 54px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel-solid); padding: 10px 9px; display: flex; align-items: center; gap: 7px; }
   .stats strong { font-size: 17px; letter-spacing: -0.04em; }
   .stats span { color: var(--muted); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pager { display:flex; justify-content:center; align-items:center; gap:10px; padding:0 18px 14px; color:var(--muted); font-size:10px; }
+  .pager button { height:28px; }
   @media (max-width: 980px) { .shell { grid-template-columns: 252px minmax(0, 1fr); } .stats { grid-template-columns: repeat(2, 1fr); } }
 </style>

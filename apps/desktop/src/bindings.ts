@@ -5,11 +5,16 @@ import { invoke as __TAURI_INVOKE } from "@tauri-apps/api/core";
 /** Commands */
 export const commands = {
 	startSearch: (request: SearchRequest) => typedError<RunSummary, AppError>(__TAURI_INVOKE("start_search", { request })),
+	resumeSearch: (jobId: string) => typedError<RunSummary, AppError>(__TAURI_INVOKE("resume_search", { jobId })),
+	pauseProvider: (source: SourceKind) => typedError<boolean, AppError>(__TAURI_INVOKE("pause_provider", { source })),
+	resumeProvider: (source: SourceKind) => typedError<boolean, AppError>(__TAURI_INVOKE("resume_provider", { source })),
 	cancelSearch: () => typedError<boolean, AppError>(__TAURI_INVOKE("cancel_search")),
 	recentResults: (limit: number) => typedError<Organization[], AppError>(__TAURI_INVOKE("recent_results", { limit })),
 	recentRuns: (limit: number) => typedError<SearchRunInfo[], AppError>(__TAURI_INVOKE("recent_runs", { limit })),
+	recentCollectionJobs: (limit: number) => typedError<CollectionJobInfo[], AppError>(__TAURI_INVOKE("recent_collection_jobs", { limit })),
 	resultsForRun: (runId: string, limit: number) => typedError<Organization[], AppError>(__TAURI_INVOKE("results_for_run", { runId, limit })),
-	exportResults: (runId: string, format: ExportFormat, limit: number) => typedError<ExportReceipt, AppError>(__TAURI_INVOKE("export_results", { runId, format, limit })),
+	resultsForRunPage: (runId: string, offset: number, limit: number) => typedError<RunResultsPage, AppError>(__TAURI_INVOKE("results_for_run_page", { runId, offset, limit })),
+	exportResults: (runId: string, format: ExportFormat) => typedError<ExportReceipt, AppError>(__TAURI_INVOKE("export_results", { runId, format })),
 	health: () => __TAURI_INVOKE<HealthInfo>("health"),
 };
 
@@ -18,9 +23,25 @@ export type AppError = {
 	kind: ErrorKind,
 	message: string,
 	retryable: boolean,
+	retryAfterSeconds: number | null,
 };
 
-export type ErrorKind = "validation" | "network" | "rateLimited" | "blocked" | "parse" | "storage" | "export" | "cancelled" | "internal";
+export type ErrorKind = "validation" | "network" | "rateLimited" | "blocked" | "captchaRequired" | "parse" | "storage" | "export" | "cancelled" | "internal";
+
+export type CollectionPreset = "gentle" | "normal" | "custom";
+
+export type CollectionJobState = "running" | "paused" | "completed" | "partial" | "failed" | "interrupted" | "cancelled";
+
+export type CollectionJobInfo = {
+	jobId: string,
+	state: CollectionJobState,
+	request: SearchRequest,
+	startedAt: string,
+	updatedAt: string,
+	message: string,
+	completedTargets: number,
+	totalTargets: number,
+};
 
 export type ExportFormat = "csv" | "json" | "xlsx";
 
@@ -92,6 +113,7 @@ export type RunSummary = {
 	warnings: string[],
 	rawRecords: number,
 	duplicatesMerged: number,
+	organizationCount: number,
 };
 
 export type SearchRunInfo = {
@@ -105,6 +127,18 @@ export type SearchRunInfo = {
 	organizationCount: number,
 };
 
+export type ProviderSearchConfig = {
+	source: SourceKind,
+	enabled: boolean,
+	maxResults: number,
+	maxPages: number,
+	concurrency: number,
+	requestDelayMs: number,
+	preset: CollectionPreset,
+	maxRetries: number,
+	backoffBaseSeconds: number,
+};
+
 export type SearchRequest = {
 	region: string,
 	query: string,
@@ -113,6 +147,16 @@ export type SearchRequest = {
 	concurrency: number,
 	requestDelayMs: number,
 	sources: SourceKind[],
+	regions: string[],
+	providerConfigs: ProviderSearchConfig[],
+};
+
+export type RunResultsPage = {
+	runId: string,
+	items: Organization[],
+	offset: number,
+	limit: number,
+	total: number,
 };
 
 /* Tauri Specta runtime */
