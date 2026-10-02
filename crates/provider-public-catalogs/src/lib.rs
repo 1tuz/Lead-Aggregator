@@ -394,7 +394,8 @@ async fn enrich_candidates<P: PublicCatalog>(
     let provider = provider.clone();
     let runtime_for_stream = runtime.clone();
     let progress_for_stream = progress.clone();
-    let cancel_for_stream = cancel.clone();
+    let provider_cancel = cancel.child_token();
+    let cancel_for_stream = provider_cancel.clone();
 
     let results = stream::iter(candidates.into_iter().enumerate())
         .map(move |(index, url)| {
@@ -407,9 +408,17 @@ async fn enrich_candidates<P: PublicCatalog>(
                     return Err(AppError::cancelled());
                 }
                 let source = provider.source();
-                let html = runtime
+                let html = match runtime
                     .run(&cancel, provider.http().fetch(source, &url))
-                    .await?;
+                    .await
+                {
+                    Ok(html) => html,
+                    Err(err) if matches!(err.kind, ErrorKind::RateLimited | ErrorKind::Blocked) => {
+                        cancel.cancel();
+                        return Err(err);
+                    }
+                    Err(err) => return Err(err),
+                };
                 let row = parse_public_profile(source, &url, &html)?;
                 (progress)(ScrapeProgress {
                     phase: ProgressPhase::Enriching,
@@ -425,15 +434,22 @@ async fn enrich_candidates<P: PublicCatalog>(
         .await;
 
     let mut output = ProviderOutput::default();
+    let mut terminal_error = None;
     for result in results {
         match result {
             Ok(row) => output.organizations.push(row),
-            Err(err) if matches!(err.kind, ErrorKind::Cancelled) => return Err(err),
             Err(err) if matches!(err.kind, ErrorKind::RateLimited | ErrorKind::Blocked) => {
+                terminal_error.get_or_insert(err);
+            }
+            Err(err) if matches!(err.kind, ErrorKind::Cancelled) && cancel.is_cancelled() => {
                 return Err(err);
             }
+            Err(err) if matches!(err.kind, ErrorKind::Cancelled) => {}
             Err(err) => output.warnings.push(err.message),
         }
+    }
+    if let Some(err) = terminal_error {
+        return Err(err);
     }
     Ok(output)
 }

@@ -10,6 +10,8 @@ serde.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true
 tokio.workspace = true
+uuid.workspace = true
+twogis-dedupe = { path = "../dedupe" }
 twogis-domain = { path = "../domain" }
 
 [lints]

@@ -288,6 +288,40 @@ pub fn normalize_domain(value: &str) -> Option<String> {
     (!host.is_empty()).then_some(host)
 }
 
+/// Every strong identity key known for an organization.
+///
+/// Persisting all keys keeps the canonical id stable when a later run learns a
+/// stronger identifier such as INN or OGRN.
+pub fn identity_keys(row: &Organization) -> Vec<String> {
+    let mut keys = Vec::new();
+
+    if let Some(inn) = row.inn.as_deref().and_then(normalize_digits) {
+        push_unique(&mut keys, format!("inn:{inn}"));
+    }
+    if let Some(ogrn) = row.ogrn.as_deref().and_then(normalize_digits) {
+        push_unique(&mut keys, format!("ogrn:{ogrn}"));
+    }
+    for phone in row.phones.iter().filter_map(|phone| normalize_phone(phone)) {
+        push_unique(&mut keys, format!("phone:{phone}"));
+    }
+    if let Some(domain) = row.website.as_deref().and_then(dedupe_domain) {
+        push_unique(&mut keys, format!("domain:{domain}"));
+    }
+    if let Some(key) = name_address_key(row) {
+        push_unique(&mut keys, format!("name-address:{key}"));
+    }
+    for source in &row.sources {
+        push_unique(
+            &mut keys,
+            format!("source:{}:{}", source.source.id(), source.source_id),
+        );
+    }
+    if keys.is_empty() {
+        keys.push(format!("source:unknown:{}", row.id));
+    }
+    keys
+}
+
 fn dedupe_domain(value: &str) -> Option<String> {
     let host = normalize_domain(value)?;
     const SHARED_DOMAINS: &[&str] = &[
@@ -386,6 +420,16 @@ mod tests {
 
         let result = deduplicate(vec![a, b]);
         assert_eq!(result.organizations.len(), 2);
+    }
+
+    #[test]
+    fn identity_keys_keep_old_and_new_strong_identifiers() {
+        let mut lead = row("source-42", "Ромашка", "+7 999 123-45-67", SourceKind::Yell);
+        lead.inn = Some("7701234567".into());
+        let keys = identity_keys(&lead);
+        assert!(keys.contains(&"inn:7701234567".to_owned()));
+        assert!(keys.contains(&"phone:+79991234567".to_owned()));
+        assert!(keys.contains(&"source:yell:source-42".to_owned()));
     }
 
     #[test]

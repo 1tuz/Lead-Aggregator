@@ -5,7 +5,7 @@ use futures::{StreamExt, stream};
 use tokio_util::sync::CancellationToken;
 use twogis_domain::{
     AppError, ErrorKind, ExportFormat, Organization, ProgressPhase, RunSummary, ScrapeProgress,
-    SearchRequest, SourceKind,
+    SearchRequest, SearchRunInfo, SourceKind,
 };
 use twogis_provider_core::{DirectoryProvider, ProgressSink};
 use twogis_storage_sqlite::SqliteStore;
@@ -15,28 +15,6 @@ use uuid::Uuid;
 pub struct ApplicationService {
     providers: Vec<Arc<dyn DirectoryProvider>>,
     store: SqliteStore,
-}
-
-fn assign_stable_ids(rows: &mut [Organization]) {
-    for row in rows {
-        let fingerprint = if row.dedupe.fingerprint.is_empty() {
-            format!("source:{}", row.id)
-        } else {
-            row.dedupe.fingerprint.clone()
-        };
-        row.id = stable_organization_id(&fingerprint);
-    }
-}
-
-fn stable_organization_id(fingerprint: &str) -> String {
-    const OFFSET: u128 = 0x6c62272e07bb014262b821756295c58d;
-    const PRIME: u128 = 0x0000000001000000000000000000013b;
-    let mut hash = OFFSET;
-    for byte in fingerprint.as_bytes() {
-        hash ^= u128::from(*byte);
-        hash = hash.wrapping_mul(PRIME);
-    }
-    format!("org-{hash:032x}")
 }
 
 impl ApplicationService {
@@ -131,7 +109,6 @@ impl ApplicationService {
         });
         let raw_records = raw.len() as u32;
         let mut resolved = twogis_dedupe::deduplicate(raw);
-        assign_stable_ids(&mut resolved.organizations);
 
         (progress)(ScrapeProgress {
             phase: ProgressPhase::Saving,
@@ -139,7 +116,7 @@ impl ApplicationService {
             total: Some(resolved.organizations.len() as u32),
             message: "Сохранение объединённых лидов в SQLite".into(),
         });
-        self.store.upsert_many(&resolved.organizations).await?;
+        self.store.upsert_many(&mut resolved.organizations).await?;
         let finished_at = Utc::now().to_rfc3339();
         let summary = RunSummary {
             run_id,
@@ -166,13 +143,26 @@ impl ApplicationService {
         self.store.recent(limit).await
     }
 
-    pub async fn export_recent(
+    pub async fn recent_runs(&self, limit: u32) -> Result<Vec<SearchRunInfo>, AppError> {
+        self.store.recent_runs(limit).await
+    }
+
+    pub async fn results_for_run(
+        &self,
+        run_id: &str,
+        limit: u32,
+    ) -> Result<Vec<Organization>, AppError> {
+        self.store.results_for_run(run_id, limit).await
+    }
+
+    pub async fn export_run(
         &self,
         path: &Path,
         format: ExportFormat,
+        run_id: &str,
         limit: u32,
     ) -> Result<u32, AppError> {
-        let rows = self.store.recent(limit).await?;
+        let rows = self.store.results_for_run(run_id, limit).await?;
         twogis_export::export(path, format, &rows)?;
         Ok(rows.len() as u32)
     }

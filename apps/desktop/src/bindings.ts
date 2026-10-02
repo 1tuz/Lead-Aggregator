@@ -7,7 +7,9 @@ export const commands = {
 	startSearch: (request: SearchRequest) => typedError<RunSummary, AppError>(__TAURI_INVOKE("start_search", { request })),
 	cancelSearch: () => typedError<boolean, AppError>(__TAURI_INVOKE("cancel_search")),
 	recentResults: (limit: number) => typedError<Organization[], AppError>(__TAURI_INVOKE("recent_results", { limit })),
-	exportResults: (format: ExportFormat, limit: number) => typedError<ExportReceipt, AppError>(__TAURI_INVOKE("export_results", { format, limit })),
+	recentRuns: (limit: number) => typedError<SearchRunInfo[], AppError>(__TAURI_INVOKE("recent_runs", { limit })),
+	resultsForRun: (runId: string, limit: number) => typedError<Organization[], AppError>(__TAURI_INVOKE("results_for_run", { runId, limit })),
+	exportResults: (runId: string, format: ExportFormat, limit: number) => typedError<ExportReceipt, AppError>(__TAURI_INVOKE("export_results", { runId, format, limit })),
 	health: () => __TAURI_INVOKE<HealthInfo>("health"),
 };
 
@@ -90,6 +92,17 @@ export type RunSummary = {
 	warnings: string[],
 	rawRecords: number,
 	duplicatesMerged: number,
+};
+
+export type SearchRunInfo = {
+	runId: string,
+	startedAt: string,
+	finishedAt: string,
+	request: SearchRequest,
+	warnings: string[],
+	rawRecords: number,
+	duplicatesMerged: number,
+	organizationCount: number,
 };
 
 export type SearchRequest = {

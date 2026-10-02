@@ -7,6 +7,7 @@ import {
   type Organization,
   type RunSummary,
   type SearchRequest,
+  type SearchRunInfo,
   type SourceKind,
 } from '../bindings';
 
@@ -18,6 +19,7 @@ export type {
   Organization,
   RunSummary,
   SearchRequest,
+  SearchRunInfo,
   SourceKind,
 };
 
@@ -32,8 +34,11 @@ export const api = {
   startSearch: async (request: SearchRequest) => unwrap(await commands.startSearch(request)),
   cancelSearch: async () => unwrap(await commands.cancelSearch()),
   recentResults: async (limit = 500) => unwrap(await commands.recentResults(limit)),
-  exportResults: async (format: ExportFormat, limit = 5000) =>
-    unwrap(await commands.exportResults(format, limit)),
+  recentRuns: async (limit = 30) => unwrap(await commands.recentRuns(limit)),
+  resultsForRun: async (runId: string, limit = 5000) =>
+    unwrap(await commands.resultsForRun(runId, limit)),
+  exportResults: async (runId: string, format: ExportFormat, limit = 5000) =>
+    unwrap(await commands.exportResults(runId, format, limit)),
   health: () => commands.health(),
 };
 

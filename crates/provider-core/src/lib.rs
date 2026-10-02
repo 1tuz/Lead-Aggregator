@@ -91,6 +91,38 @@ impl ProviderRuntime {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clamps_concurrency_to_provider_policy() {
+        let request = SearchRequest {
+            concurrency: 8,
+            ..SearchRequest::default()
+        };
+        let runtime = ProviderRuntime::for_request(ProviderPolicy::conservative(250, 2), &request);
+        assert_eq!(runtime.concurrency(), 2);
+    }
+
+    #[tokio::test]
+    async fn cancelled_runtime_does_not_start_request() {
+        let request = SearchRequest::default();
+        let runtime = ProviderRuntime::for_request(ProviderPolicy::conservative(250, 1), &request);
+        let token = CancellationToken::new();
+        token.cancel();
+
+        let result = runtime.run(&token, async { Ok::<_, AppError>(()) }).await;
+        assert!(matches!(
+            result,
+            Err(AppError {
+                kind: ErrorKind::Cancelled,
+                ..
+            })
+        ));
+    }
+}
+
 #[async_trait]
 pub trait DirectoryProvider: Send + Sync {
     fn source(&self) -> SourceKind;

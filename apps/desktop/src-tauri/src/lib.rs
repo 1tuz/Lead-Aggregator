@@ -1,7 +1,7 @@
 mod commands;
 mod state;
 
-use std::{fs, sync::Arc};
+use std::{fs, path::Path, sync::Arc};
 
 #[cfg(debug_assertions)]
 use specta_typescript::Typescript;
@@ -15,7 +15,10 @@ use twogis_provider_public_catalogs::{RusprofileHtmlProvider, YellHtmlProvider, 
 use twogis_storage_sqlite::SqliteStore;
 
 use crate::{
-    commands::{cancel_search, export_results, health, recent_results, start_search},
+    commands::{
+        cancel_search, export_results, health, recent_results, recent_runs, results_for_run,
+        start_search,
+    },
     state::AppState,
 };
 
@@ -24,6 +27,8 @@ fn specta_builder() -> Builder<Wry> {
         start_search,
         cancel_search,
         recent_results,
+        recent_runs,
+        results_for_run,
         export_results,
         health
     ])
@@ -43,7 +48,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             let handle = app.handle().clone();
             let app_data = handle.path().app_data_dir()?;
             fs::create_dir_all(&app_data)?;
-            let db_path = app_data.join("twogis-extractor.db");
+            let db_path = app_data.join("lead-aggregator.db");
+            migrate_legacy_database(&app_data, &db_path)?;
 
             let providers: Vec<Arc<dyn DirectoryProvider>> = vec![
                 Arc::new(TwoGisHtmlProvider::new().map_err(as_setup_error)?),
@@ -62,6 +68,26 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         })
         .run(tauri::generate_context!())?;
+    Ok(())
+}
+
+fn migrate_legacy_database(app_data: &Path, db_path: &Path) -> Result<(), std::io::Error> {
+    if db_path.exists() {
+        return Ok(());
+    }
+
+    let mut candidates = vec![app_data.join("twogis-extractor.db")];
+    if let Some(parent) = app_data.parent() {
+        candidates.push(
+            parent
+                .join("dev.local.twogis-extractor")
+                .join("twogis-extractor.db"),
+        );
+    }
+    if let Some(source) = candidates.into_iter().find(|candidate| candidate.exists()) {
+        // Copy instead of rename so downgrading to an older build remains safe.
+        fs::copy(source, db_path)?;
+    }
     Ok(())
 }
 

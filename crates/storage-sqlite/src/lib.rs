@@ -4,7 +4,9 @@ use sqlx::{
     Row, SqlitePool,
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
 };
-use twogis_domain::{AppError, DedupeInfo, Organization, RunSummary, SearchRequest};
+use twogis_dedupe::identity_keys;
+use twogis_domain::{AppError, DedupeInfo, Organization, RunSummary, SearchRequest, SearchRunInfo};
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct SqliteStore {
@@ -15,7 +17,8 @@ impl SqliteStore {
     pub async fn connect(path: &Path) -> Result<Self, AppError> {
         let options = SqliteConnectOptions::new()
             .filename(path)
-            .create_if_missing(true);
+            .create_if_missing(true)
+            .foreign_keys(true);
         let pool = SqlitePoolOptions::new()
             .max_connections(4)
             .connect_with(options)
@@ -98,12 +101,16 @@ impl SqliteStore {
         .await
         .map_err(|e| AppError::storage(format!("failed to create search_runs: {e}")))?;
 
+        // Legacy relation is kept for old databases; new runs also store an
+        // immutable snapshot in `run_results`.
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS run_organizations (
               run_id TEXT NOT NULL,
               organization_id TEXT NOT NULL,
-              PRIMARY KEY (run_id, organization_id)
+              PRIMARY KEY (run_id, organization_id),
+              FOREIGN KEY (run_id) REFERENCES search_runs(run_id) ON DELETE CASCADE,
+              FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
             )
             "#,
         )
@@ -117,6 +124,40 @@ impl SqliteStore {
         .execute(&self.pool)
         .await
         .map_err(|e| AppError::storage(format!("failed to index run organizations: {e}")))?;
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS run_results (
+              run_id TEXT NOT NULL,
+              organization_id TEXT NOT NULL,
+              position INTEGER NOT NULL,
+              payload_json TEXT NOT NULL,
+              PRIMARY KEY (run_id, organization_id),
+              FOREIGN KEY (run_id) REFERENCES search_runs(run_id) ON DELETE CASCADE
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::storage(format!("failed to create run_results: {e}")))?;
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS organization_identities (
+              identity_key TEXT PRIMARY KEY,
+              organization_id TEXT NOT NULL
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::storage(format!("failed to create organization identities: {e}")))?;
+        sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_organization_identities_org ON organization_identities(organization_id)",
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::storage(format!("failed to index organization identities: {e}")))?;
 
         let mut tx = self.pool.begin().await.map_err(storage_error)?;
         sqlx::query(
@@ -173,6 +214,7 @@ impl SqliteStore {
             .execute(&self.pool)
             .await
             .map_err(|e| AppError::storage(format!("failed to create OGRN index: {e}")))?;
+        self.backfill_identity_keys().await?;
         Ok(())
     }
 
@@ -230,7 +272,42 @@ impl SqliteStore {
         Ok(())
     }
 
-    pub async fn upsert_many(&self, rows: &[Organization]) -> Result<(), AppError> {
+    async fn backfill_identity_keys(&self) -> Result<(), AppError> {
+        let rows = sqlx::query(
+            r#"
+            SELECT id, name, category, address, rating, review_count,
+                   phones_json, email, website, socials_json, opening_status,
+                   latitude, longitude, source_url, collected_at, inn, ogrn,
+                   sources_json, tags_json, branches_json, dedupe_json
+            FROM organizations
+            ORDER BY collected_at ASC
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::storage(format!("failed to load identity backfill rows: {e}")))?;
+
+        let mut tx = self.pool.begin().await.map_err(storage_error)?;
+        for db_row in rows {
+            let row = decode_row(db_row)?;
+            for key in identity_keys(&row) {
+                sqlx::query(
+                    "INSERT OR IGNORE INTO organization_identities (identity_key, organization_id) VALUES (?, ?)",
+                )
+                .bind(key)
+                .bind(&row.id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| AppError::storage(format!("failed to backfill identity key: {e}")))?;
+            }
+        }
+        tx.commit()
+            .await
+            .map_err(|e| AppError::storage(format!("failed to commit identity backfill: {e}")))?;
+        Ok(())
+    }
+
+    pub async fn upsert_many(&self, rows: &mut [Organization]) -> Result<(), AppError> {
         let mut tx = self
             .pool
             .begin()
@@ -238,6 +315,65 @@ impl SqliteStore {
             .map_err(|e| AppError::storage(format!("failed to start transaction: {e}")))?;
 
         for row in rows {
+            let keys = identity_keys(row);
+            let mut existing_ids = Vec::<String>::new();
+            for key in &keys {
+                let existing = sqlx::query_scalar::<_, String>(
+                    "SELECT organization_id FROM organization_identities WHERE identity_key = ?",
+                )
+                .bind(key)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(|e| AppError::storage(format!("failed to resolve identity key: {e}")))?;
+                if let Some(id) = existing
+                    && !existing_ids.contains(&id)
+                {
+                    existing_ids.push(id);
+                }
+            }
+            existing_ids.sort();
+            let canonical_id = existing_ids
+                .first()
+                .cloned()
+                .unwrap_or_else(|| format!("org-{}", Uuid::new_v4()));
+
+            for stale_id in existing_ids.iter().skip(1) {
+                sqlx::query(
+                    r#"
+                    INSERT OR IGNORE INTO run_organizations (run_id, organization_id)
+                    SELECT run_id, ? FROM run_organizations WHERE organization_id = ?
+                    "#,
+                )
+                .bind(&canonical_id)
+                .bind(stale_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| AppError::storage(format!("failed to merge run identities: {e}")))?;
+                sqlx::query("DELETE FROM run_organizations WHERE organization_id = ?")
+                    .bind(stale_id)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(|e| {
+                        AppError::storage(format!("failed to remove stale run identity: {e}"))
+                    })?;
+                sqlx::query(
+                    "UPDATE organization_identities SET organization_id = ? WHERE organization_id = ?",
+                )
+                .bind(&canonical_id)
+                .bind(stale_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| AppError::storage(format!("failed to merge identity aliases: {e}")))?;
+                sqlx::query("DELETE FROM organizations WHERE id = ?")
+                    .bind(stale_id)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(|e| {
+                        AppError::storage(format!("failed to remove stale organization: {e}"))
+                    })?;
+            }
+            row.id = canonical_id.clone();
+
             for source in &row.sources {
                 if source.source_id != row.id {
                     sqlx::query(
@@ -317,6 +453,21 @@ impl SqliteStore {
             .execute(&mut *tx)
             .await
             .map_err(|e| AppError::storage(format!("failed to persist {}: {e}", row.name)))?;
+
+            for key in keys {
+                sqlx::query(
+                    r#"
+                    INSERT INTO organization_identities (identity_key, organization_id)
+                    VALUES (?, ?)
+                    ON CONFLICT(identity_key) DO UPDATE SET organization_id=excluded.organization_id
+                    "#,
+                )
+                .bind(key)
+                .bind(&row.id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| AppError::storage(format!("failed to persist identity key: {e}")))?;
+            }
         }
 
         tx.commit()
@@ -366,27 +517,136 @@ impl SqliteStore {
         .await
         .map_err(|e| AppError::storage(format!("failed to persist search run: {e}")))?;
 
-        sqlx::query("DELETE FROM run_organizations WHERE run_id = ?")
+        sqlx::query("DELETE FROM run_results WHERE run_id = ?")
             .bind(&summary.run_id)
             .execute(&mut *tx)
             .await
-            .map_err(|e| AppError::storage(format!("failed to refresh run organizations: {e}")))?;
+            .map_err(|e| AppError::storage(format!("failed to refresh run snapshots: {e}")))?;
 
-        for row in &summary.organizations {
+        for (position, row) in summary.organizations.iter().enumerate() {
+            let payload = encode(row, "run result")?;
             sqlx::query(
-                "INSERT OR IGNORE INTO run_organizations (run_id, organization_id) VALUES (?, ?)",
+                r#"
+                INSERT INTO run_results (run_id, organization_id, position, payload_json)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(run_id, organization_id) DO UPDATE SET
+                  position=excluded.position,
+                  payload_json=excluded.payload_json
+                "#,
             )
             .bind(&summary.run_id)
             .bind(&row.id)
+            .bind(i64::try_from(position).unwrap_or(i64::MAX))
+            .bind(payload)
             .execute(&mut *tx)
             .await
-            .map_err(|e| AppError::storage(format!("failed to link run organization: {e}")))?;
+            .map_err(|e| AppError::storage(format!("failed to persist run snapshot: {e}")))?;
         }
 
         tx.commit()
             .await
             .map_err(|e| AppError::storage(format!("failed to commit search run: {e}")))?;
         Ok(())
+    }
+
+    pub async fn recent_runs(&self, limit: u32) -> Result<Vec<SearchRunInfo>, AppError> {
+        let rows = sqlx::query(
+            r#"
+            SELECT run_id, started_at, finished_at, request_json, warnings_json,
+                   raw_records, duplicates_merged, organization_count
+            FROM search_runs
+            ORDER BY finished_at DESC
+            LIMIT ?
+            "#,
+        )
+        .bind(i64::from(limit.clamp(1, 200)))
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::storage(format!("failed to load search runs: {e}")))?;
+
+        rows.into_iter()
+            .map(|row| {
+                let request_json: String = row.try_get("request_json").map_err(storage_error)?;
+                let warnings_json: String = row.try_get("warnings_json").map_err(storage_error)?;
+                Ok(SearchRunInfo {
+                    run_id: row.try_get("run_id").map_err(storage_error)?,
+                    started_at: row.try_get("started_at").map_err(storage_error)?,
+                    finished_at: row.try_get("finished_at").map_err(storage_error)?,
+                    request: serde_json::from_str(&request_json).map_err(|e| {
+                        AppError::storage(format!("failed to decode search request: {e}"))
+                    })?,
+                    warnings: serde_json::from_str(&warnings_json).unwrap_or_default(),
+                    raw_records: u32::try_from(
+                        row.try_get::<i64, _>("raw_records")
+                            .map_err(storage_error)?,
+                    )
+                    .unwrap_or(u32::MAX),
+                    duplicates_merged: u32::try_from(
+                        row.try_get::<i64, _>("duplicates_merged")
+                            .map_err(storage_error)?,
+                    )
+                    .unwrap_or(u32::MAX),
+                    organization_count: u32::try_from(
+                        row.try_get::<i64, _>("organization_count")
+                            .map_err(storage_error)?,
+                    )
+                    .unwrap_or(u32::MAX),
+                })
+            })
+            .collect()
+    }
+
+    pub async fn results_for_run(
+        &self,
+        run_id: &str,
+        limit: u32,
+    ) -> Result<Vec<Organization>, AppError> {
+        let payloads = sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT payload_json
+            FROM run_results
+            WHERE run_id = ?
+            ORDER BY position ASC
+            LIMIT ?
+            "#,
+        )
+        .bind(run_id)
+        .bind(i64::from(limit.clamp(1, 5_000)))
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::storage(format!("failed to load run snapshots: {e}")))?;
+
+        if !payloads.is_empty() {
+            return payloads
+                .into_iter()
+                .map(|payload| {
+                    serde_json::from_str(&payload).map_err(|e| {
+                        AppError::storage(format!("failed to decode run snapshot: {e}"))
+                    })
+                })
+                .collect();
+        }
+
+        // Compatibility with runs created before immutable snapshots existed.
+        let rows = sqlx::query(
+            r#"
+            SELECT o.id, o.name, o.category, o.address, o.rating, o.review_count,
+                   o.phones_json, o.email, o.website, o.socials_json, o.opening_status,
+                   o.latitude, o.longitude, o.source_url, o.collected_at, o.inn, o.ogrn,
+                   o.sources_json, o.tags_json, o.branches_json, o.dedupe_json
+            FROM run_organizations r
+            JOIN organizations o ON o.id = r.organization_id
+            WHERE r.run_id = ?
+            ORDER BY o.name ASC
+            LIMIT ?
+            "#,
+        )
+        .bind(run_id)
+        .bind(i64::from(limit.clamp(1, 5_000)))
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::storage(format!("failed to load legacy run results: {e}")))?;
+        rows.into_iter().map(decode_row).collect()
     }
 
     pub async fn recent(&self, limit: u32) -> Result<Vec<Organization>, AppError> {
@@ -557,6 +817,100 @@ mod tests {
             .await?;
         assert_eq!(source_count, 2);
         drop(migrated_again);
+        let _ = std::fs::remove_file(path);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn keeps_identity_stable_and_run_snapshots_immutable()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let path = std::env::temp_dir().join(format!(
+            "lead-aggregator-identity-{}-{}.sqlite",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_nanos()
+        ));
+        let store = SqliteStore::connect(&path).await?;
+
+        let mut first = Organization {
+            id: "yell-1".into(),
+            name: "Ромашка".into(),
+            phones: vec!["+7 999 123-45-67".into()],
+            source_url: "https://example.test/yell-1".into(),
+            collected_at: "2026-10-01T20:00:00Z".into(),
+            ..Organization::default()
+        };
+        first.sources.push(SourceAttribution {
+            source: SourceKind::Yell,
+            source_id: "yell-1".into(),
+            source_url: first.source_url.clone(),
+            collected_at: first.collected_at.clone(),
+        });
+        let mut first_rows = vec![first];
+        store.upsert_many(&mut first_rows).await?;
+        let canonical_id = first_rows[0].id.clone();
+        assert!(canonical_id.starts_with("org-"));
+
+        let mut enriched = Organization {
+            id: "rusprofile-1".into(),
+            name: "Ромашка".into(),
+            phones: vec!["89991234567".into()],
+            inn: Some("7701234567".into()),
+            source_url: "https://example.test/rusprofile-1".into(),
+            collected_at: "2026-10-01T20:01:00Z".into(),
+            ..Organization::default()
+        };
+        enriched.sources.push(SourceAttribution {
+            source: SourceKind::Rusprofile,
+            source_id: "rusprofile-1".into(),
+            source_url: enriched.source_url.clone(),
+            collected_at: enriched.collected_at.clone(),
+        });
+        let mut enriched_rows = vec![enriched];
+        store.upsert_many(&mut enriched_rows).await?;
+        assert_eq!(enriched_rows[0].id, canonical_id);
+
+        let mut inn_only = Organization {
+            id: "rusprofile-2".into(),
+            name: "Ромашка".into(),
+            inn: Some("7701234567".into()),
+            source_url: "https://example.test/rusprofile-2".into(),
+            collected_at: "2026-10-01T20:02:00Z".into(),
+            ..Organization::default()
+        };
+        inn_only.sources.push(SourceAttribution {
+            source: SourceKind::Rusprofile,
+            source_id: "rusprofile-2".into(),
+            source_url: inn_only.source_url.clone(),
+            collected_at: inn_only.collected_at.clone(),
+        });
+        let mut inn_only_rows = vec![inn_only];
+        store.upsert_many(&mut inn_only_rows).await?;
+        assert_eq!(inn_only_rows[0].id, canonical_id);
+
+        let summary = RunSummary {
+            run_id: "run-stable".into(),
+            started_at: "2026-10-01T20:02:00Z".into(),
+            finished_at: "2026-10-01T20:03:00Z".into(),
+            organizations: inn_only_rows.clone(),
+            warnings: Vec::new(),
+            raw_records: 1,
+            duplicates_merged: 0,
+        };
+        store
+            .record_run(&summary, &SearchRequest::default())
+            .await?;
+
+        inn_only_rows[0].name = "Изменённое имя".into();
+        inn_only_rows[0].collected_at = "2026-10-01T20:04:00Z".into();
+        store.upsert_many(&mut inn_only_rows).await?;
+        let snapshot = store.results_for_run("run-stable", 10).await?;
+        assert_eq!(snapshot.len(), 1);
+        assert_eq!(snapshot[0].name, "Ромашка");
+        assert_eq!(store.recent_runs(10).await?[0].run_id, "run-stable");
+
+        drop(store);
         let _ = std::fs::remove_file(path);
         Ok(())
     }

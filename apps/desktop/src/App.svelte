@@ -2,8 +2,9 @@
   import { listen } from '@tauri-apps/api/event';
   import { CircleStop, Database, Download, Moon, PanelLeft, Play, Sun } from 'lucide-svelte';
   import { onMount } from 'svelte';
-  import { api, errorMessage, type ExportFormat, type HealthInfo, type Organization, type SourceKind } from './lib/ipc';
+  import { api, errorMessage, type ExportFormat, type HealthInfo, type Organization, type SearchRunInfo, type SourceKind } from './lib/ipc';
   import { citySlug, normalizePlaceName, regionCityCount, russianCities, russianRegions, type RussianCity } from './lib/geography';
+  import LeadTable from './lib/components/LeadTable.svelte';
 
   type Progress = { phase: 'discovering' | 'enriching' | 'resolving' | 'saving' | 'done'; current: number; total: number | null; message: string };
   const sourceOptions: { id: SourceKind; label: string; note: string }[] = [
@@ -28,6 +29,8 @@
   let delay = 650;
   let selectedSources: SourceKind[] = ['twoGis', 'yell'];
   let rows: Organization[] = [];
+  let runs: SearchRunInfo[] = [];
+  let currentRunId: string | null = null;
   let rawRecords = 0;
   let duplicatesMerged = 0;
   let warnings: string[] = [];
@@ -78,7 +81,7 @@
     if (storedTheme === 'graphite') theme = 'graphite';
     applyTheme();
     void api.health().then((value) => (health = value)).catch(() => undefined);
-    void api.recentResults(300).then((value) => (rows = value)).catch(() => undefined);
+    void loadRecentRuns().catch(() => undefined);
     const unlisten = listen<Progress>('scrape-progress', ({ payload }) => {
       message = payload.message;
       if (payload.total && payload.total > 0) progress = Math.min(100, Math.round((payload.current / payload.total) * 100));
@@ -131,14 +134,43 @@
       ? selectedSources.filter((item) => item !== source)
       : [...selectedSources, source];
   }
-  function sourceLabel(source: SourceKind) { return sourceOptions.find((item) => item.id === source)?.label ?? source; }
+  function runLabel(run: SearchRunInfo) {
+    const when = new Date(run.finishedAt).toLocaleString();
+    return `${when} · ${run.request.query}`;
+  }
+
+  async function loadRun(runId: string) {
+    const run = runs.find((item) => item.runId === runId);
+    rows = await api.resultsForRun(runId, 5000);
+    currentRunId = runId;
+    if (run) {
+      rawRecords = run.rawRecords;
+      duplicatesMerged = run.duplicatesMerged;
+      warnings = run.warnings;
+      message = `${run.request.query} · уникальных лидов: ${rows.length}`;
+    }
+  }
+
+  async function loadRecentRuns(selectRunId?: string) {
+    runs = await api.recentRuns(30);
+    const target = selectRunId ?? currentRunId ?? runs[0]?.runId;
+    if (target) {
+      await loadRun(target);
+      return;
+    }
+    rows = await api.recentResults(300);
+    currentRunId = null;
+    if (rows.length > 0) message = 'Загружены результаты старой версии · выполни новый поиск для экспорта по запуску';
+  }
 
   async function runSearch() {
     running = true; error = ''; warnings = []; progress = 1; message = 'Запуск поиска';
     try {
       const summary = await api.startSearch({ region, query, maxResults, maxPages, concurrency, requestDelayMs: delay, sources: selectedSources });
+      currentRunId = summary.runId;
       rows = summary.organizations; warnings = summary.warnings; progress = 100;
       rawRecords = summary.rawRecords; duplicatesMerged = summary.duplicatesMerged;
+      runs = await api.recentRuns(30);
       message = `Уникальных лидов: ${rows.length} · исходных записей: ${summary.rawRecords} · объединено: ${summary.duplicatesMerged}`;
     } catch (e) { error = errorMessage(e); message = 'Поиск остановлен'; }
     finally { running = false; }
@@ -146,7 +178,8 @@
   async function cancelSearch() { await api.cancelSearch(); message = 'Остановка…'; }
   async function exportRows(format: ExportFormat) {
     error = '';
-    try { const receipt = await api.exportResults(format, 5000); message = `Экспортировано ${receipt.rows}: ${receipt.path}`; }
+    if (!currentRunId) { error = 'Сначала выбери или выполни поиск'; return; }
+    try { const receipt = await api.exportResults(currentRunId, format, 5000); message = `Экспортировано ${receipt.rows}: ${receipt.path}`; }
     catch (e) { error = errorMessage(e); }
   }
 </script>
@@ -256,9 +289,22 @@
         <div><h1>Лиды</h1><p>{message}</p></div>
       </div>
       <div class="actions">
-        <button onclick={() => exportRows('csv')} disabled={rows.length === 0 || running}><Download size={15} /> CSV</button>
-        <button onclick={() => exportRows('xlsx')} disabled={rows.length === 0 || running}><Download size={15} /> XLSX</button>
-        <button onclick={() => exportRows('json')} disabled={rows.length === 0 || running}><Download size={15} /> JSON</button>
+        {#if runs.length > 0}
+          <select
+            class="run-select"
+            aria-label="История поисков"
+            value={currentRunId ?? ''}
+            disabled={running}
+            onchange={(event) => void loadRun(event.currentTarget.value)}
+          >
+            {#each runs as run}
+              <option value={run.runId}>{runLabel(run)}</option>
+            {/each}
+          </select>
+        {/if}
+        <button onclick={() => exportRows('csv')} disabled={rows.length === 0 || running || !currentRunId}><Download size={15} /> CSV</button>
+        <button onclick={() => exportRows('xlsx')} disabled={rows.length === 0 || running || !currentRunId}><Download size={15} /> XLSX</button>
+        <button onclick={() => exportRows('json')} disabled={rows.length === 0 || running || !currentRunId}><Download size={15} /> JSON</button>
       </div>
     </header>
 
@@ -281,40 +327,7 @@
       <div><strong>{duplicatesMerged}</strong><span>объединено</span></div>
     </section>
 
-    <section class="table-card">
-      <div class="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>Компания</th>
-              <th>Источники</th>
-              <th>Адрес</th>
-              <th>Телефон</th>
-              <th>ИНН</th>
-              <th>Сайт / почта</th>
-              <th>Метки</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#if rows.length === 0}
-              <tr class="empty-row"><td colspan="7">Запусти поиск или дождись загрузки сохранённых результатов.</td></tr>
-            {:else}
-              {#each rows as row (row.id)}
-                <tr>
-                  <td><strong>{row.name}</strong><small class="subline">{row.category ?? '—'}</small></td>
-                  <td><div class="chips">{#each row.sources as source}<span class="chip">{sourceLabel(source.source)}</span>{/each}</div></td>
-                  <td class="address">{row.address ?? '—'}</td>
-                  <td>{row.phones[0] ?? '—'}</td>
-                  <td>{row.inn ?? '—'}</td>
-                  <td>{row.website ?? row.email ?? '—'}</td>
-                  <td><div class="chips">{#each row.tags.slice(0, 3) as tag}<span class:warn-chip={tag === 'Возможный дубль'} class="chip">{tag}</span>{/each}</div></td>
-                </tr>
-              {/each}
-            {/if}
-          </tbody>
-        </table>
-      </div>
-    </section>
+    <LeadTable {rows} />
   </main>
 </div>
 
@@ -369,7 +382,8 @@
   .topbar { display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 18px 20px 14px; }
   h1 { font-size: 18px; line-height: 1.1; letter-spacing: -0.025em; margin: 0; }
   .topbar p { color: var(--muted); font-size: 11px; margin: 5px 0 0; max-width: 640px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .actions { display: flex; gap: 6px; }
+  .actions { display: flex; gap: 6px; align-items: center; }
+  .run-select { max-width: 260px; height: 34px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-solid); color: var(--fg); padding: 0 9px; font-size: 11px; }
   .progress-track { height: 2px; background: var(--panel-muted); }
   .progress-value { height: 100%; background: var(--accent); transition: width 180ms ease; }
   .notice { margin: 12px 18px 0; border-radius: 9px; padding: 9px 11px; font-size: 11px; border: 1px solid var(--line); }
@@ -380,18 +394,5 @@
   .stats > div { min-width: 0; height: 54px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel-solid); padding: 10px 9px; display: flex; align-items: center; gap: 7px; }
   .stats strong { font-size: 17px; letter-spacing: -0.04em; }
   .stats span { color: var(--muted); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .table-card { min-height: 0; flex: 1; margin: 0 18px 18px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--panel-solid); }
-  .table-scroll { width: 100%; height: 100%; overflow: auto; }
-  table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 11px; }
-  th { position: sticky; top: 0; z-index: 1; background: color-mix(in srgb, var(--panel-solid) 94%, var(--panel-muted)); color: var(--muted); text-align: left; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; }
-  th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  th:nth-child(1) { width: 22%; } th:nth-child(2) { width: 16%; } th:nth-child(3) { width: 25%; } th:nth-child(4) { width: 12%; } th:nth-child(5) { width: 13%; } th:nth-child(6) { width: 17%; }
-  tbody tr:hover { background: color-mix(in srgb, var(--fg) 3%, transparent); }
-  td.address { color: var(--muted); }
-  .subline { display:block; color:var(--muted); margin-top:3px; overflow:hidden; text-overflow:ellipsis; }
-  .chips { display:flex; gap:4px; overflow:hidden; }
-  .chip { display:inline-flex; height:20px; align-items:center; border:1px solid var(--line); border-radius:999px; padding:0 7px; font-size:9px; background:var(--panel-muted); }
-  .warn-chip { color:var(--warning); }
-  .empty-row td { text-align: center; color: var(--muted); padding: 48px 16px; }
-  @media (max-width: 980px) { .shell { grid-template-columns: 252px minmax(0, 1fr); } .stats { grid-template-columns: repeat(2, 1fr); } th:nth-child(2), td:nth-child(2) { display:none; } }
+  @media (max-width: 980px) { .shell { grid-template-columns: 252px minmax(0, 1fr); } .stats { grid-template-columns: repeat(2, 1fr); } }
 </style>

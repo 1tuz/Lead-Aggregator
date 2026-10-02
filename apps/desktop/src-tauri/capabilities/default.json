@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Minimum permissions for the main 2GIS Extractor window.",
+  "description": "Minimum permissions for the main Lead Aggregator window.",
   "windows": ["main"],
   "permissions": ["core:default"]
 }

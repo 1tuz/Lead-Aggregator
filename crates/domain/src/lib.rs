@@ -202,6 +202,19 @@ pub struct RunSummary {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
+pub struct SearchRunInfo {
+    pub run_id: String,
+    pub started_at: String,
+    pub finished_at: String,
+    pub request: SearchRequest,
+    pub warnings: Vec<String>,
+    pub raw_records: u32,
+    pub duplicates_merged: u32,
+    pub organization_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
 pub struct ScrapeProgress {
     pub phase: ProgressPhase,
     pub current: u32,

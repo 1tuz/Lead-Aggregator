@@ -5,7 +5,7 @@ use tauri::{Emitter, Manager, State};
 use tokio_util::sync::CancellationToken;
 use twogis_domain::{
     AppError, ExportFormat, ExportReceipt, HealthInfo, Organization, RunSummary, ScrapeProgress,
-    SearchRequest,
+    SearchRequest, SearchRunInfo,
 };
 use twogis_provider_core::ProgressSink;
 
@@ -64,9 +64,29 @@ pub async fn recent_results(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn recent_runs(
+    state: State<'_, AppState>,
+    limit: u32,
+) -> Result<Vec<SearchRunInfo>, AppError> {
+    state.service.recent_runs(limit).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn results_for_run(
+    state: State<'_, AppState>,
+    run_id: String,
+    limit: u32,
+) -> Result<Vec<Organization>, AppError> {
+    state.service.results_for_run(&run_id, limit).await
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn export_results(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
+    run_id: String,
     format: ExportFormat,
     limit: u32,
 ) -> Result<ExportReceipt, AppError> {
@@ -85,7 +105,10 @@ pub async fn export_results(
         extension
     );
     let path = dir.join(filename);
-    let rows = state.service.export_recent(&path, format, limit).await?;
+    let rows = state
+        .service
+        .export_run(&path, format, &run_id, limit)
+        .await?;
     Ok(ExportReceipt {
         path: path.to_string_lossy().into_owned(),
         rows,
