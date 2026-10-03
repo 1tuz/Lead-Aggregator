@@ -196,7 +196,7 @@ impl DirectoryProvider for YellHtmlProvider {
     }
 
     fn policy(&self) -> ProviderPolicy {
-        ProviderPolicy::conservative(1_000, 2)
+        ProviderPolicy::conservative(2_000, 1)
     }
 
     async fn search(
@@ -276,7 +276,7 @@ impl DirectoryProvider for ZoonHtmlProvider {
     }
 
     fn policy(&self) -> ProviderPolicy {
-        ProviderPolicy::conservative(1_500, 1)
+        ProviderPolicy::conservative(3_000, 1)
     }
 
     async fn search(
@@ -347,7 +347,7 @@ impl DirectoryProvider for RusprofileHtmlProvider {
     }
 
     fn policy(&self) -> ProviderPolicy {
-        ProviderPolicy::conservative(2_500, 1)
+        ProviderPolicy::conservative(4_500, 1)
     }
 
     async fn search(

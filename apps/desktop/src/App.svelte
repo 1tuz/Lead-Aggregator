@@ -10,10 +10,10 @@
 
   const allSources: SourceKind[] = ['twoGis', 'yell', 'zoon', 'rusprofile'];
   const initialProviderConfigs: ProviderSearchConfig[] = [
-    { source: 'twoGis', enabled: true, maxResults: 10000, maxPages: 500, concurrency: 3, requestDelayMs: 800, preset: 'normal', maxRetries: 1, backoffBaseSeconds: 30 },
-    { source: 'yell', enabled: true, maxResults: 7500, maxPages: 500, concurrency: 2, requestDelayMs: 1200, preset: 'normal', maxRetries: 1, backoffBaseSeconds: 45 },
-    { source: 'zoon', enabled: false, maxResults: 5000, maxPages: 400, concurrency: 1, requestDelayMs: 1800, preset: 'normal', maxRetries: 1, backoffBaseSeconds: 60 },
-    { source: 'rusprofile', enabled: false, maxResults: 10000, maxPages: 1000, concurrency: 1, requestDelayMs: 3000, preset: 'normal', maxRetries: 1, backoffBaseSeconds: 90 },
+    { source: 'twoGis', enabled: true, maxResults: 2000, maxPages: 50, concurrency: 1, requestDelayMs: 2000, preset: 'gentle', maxRetries: 2, backoffBaseSeconds: 60 },
+    { source: 'yell', enabled: false, maxResults: 1500, maxPages: 50, concurrency: 1, requestDelayMs: 2500, preset: 'gentle', maxRetries: 2, backoffBaseSeconds: 90 },
+    { source: 'zoon', enabled: false, maxResults: 1000, maxPages: 40, concurrency: 1, requestDelayMs: 3500, preset: 'gentle', maxRetries: 2, backoffBaseSeconds: 120 },
+    { source: 'rusprofile', enabled: false, maxResults: 1000, maxPages: 50, concurrency: 1, requestDelayMs: 5000, preset: 'gentle', maxRetries: 2, backoffBaseSeconds: 180 },
   ];
 
   let region = '';
