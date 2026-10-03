@@ -2,14 +2,12 @@
 set -euo pipefail
 
 REPOSITORY="1tuz/Lead-Aggregator"
+RAW_SCRIPTS_BASE="https://raw.githubusercontent.com/${REPOSITORY}/main/scripts"
 APP_NAME="Lead Aggregator"
 TEMP_DIR="$(mktemp -d)"
 MOUNT_POINT="${TEMP_DIR}/mount"
 MOUNTED=0
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=lib/macos-paths.sh
-source "${SCRIPT_DIR}/lib/macos-paths.sh"
 
 cleanup() {
   if [[ "$MOUNTED" == 1 ]]; then
@@ -21,6 +19,27 @@ trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 
 command -v curl >/dev/null 2>&1 || { echo "curl is required" >&2; exit 1; }
+
+# Works for both `./scripts/install.sh` and `curl … | bash` (no BASH_SOURCE / no local lib/).
+load_macos_paths() {
+  local script_path="${BASH_SOURCE[0]:-}"
+  if [[ -n "$script_path" && -f "$script_path" ]]; then
+    local dir helper
+    dir="$(cd "$(dirname "$script_path")" && pwd)"
+    helper="${dir}/lib/macos-paths.sh"
+    if [[ -f "$helper" ]]; then
+      # shellcheck source=lib/macos-paths.sh
+      source "$helper"
+      return 0
+    fi
+  fi
+  local remote_helper="${TEMP_DIR}/macos-paths.sh"
+  curl --fail --location --silent --show-error \
+    "${RAW_SCRIPTS_BASE}/lib/macos-paths.sh" -o "$remote_helper"
+  # shellcheck disable=SC1090
+  source "$remote_helper"
+}
+load_macos_paths
 
 case "$(uname -s)" in
   Darwin)
