@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use reqwest::{Client, StatusCode, redirect::Policy};
+use reqwest::{Client, redirect::Policy};
 use twogis_domain::{AppError, ErrorKind, ResponseDiagnostics, SourceKind};
 use url::Url;
 
