@@ -318,7 +318,7 @@ pub struct HealthInfo {
     pub available_sources: Vec<SourceKind>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub enum ErrorKind {
     Validation,
