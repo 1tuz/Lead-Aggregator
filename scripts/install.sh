@@ -21,9 +21,30 @@ macos_default_install_dir() {
   printf '/Applications\n'
 }
 
+detach_image() {
+  # Prefer modern diskutil; fall back to hdiutil.
+  diskutil unmount force "$MOUNT_POINT" >/dev/null 2>&1 \
+    || diskutil eject "$MOUNT_POINT" >/dev/null 2>&1 \
+    || hdiutil detach "$MOUNT_POINT" -quiet >/dev/null 2>&1 \
+    || true
+}
+
+attach_image() {
+  local image="$1"
+  local mount="$2"
+  mkdir -p "$mount"
+  if diskutil image attach --help >/dev/null 2>&1 \
+    || diskutil image 2>&1 | grep -q 'attach'; then
+    diskutil image attach --readOnly --nobrowse --mountPoint "$mount" "$image" >/dev/null
+  else
+    # Older macOS only.
+    hdiutil attach "$image" -nobrowse -readonly -mountpoint "$mount" >/dev/null 2>&1
+  fi
+}
+
 cleanup() {
   if [[ "$MOUNTED" == 1 ]]; then
-    hdiutil detach "$MOUNT_POINT" -quiet >/dev/null 2>&1 || true
+    detach_image
   fi
   rm -rf "$TEMP_DIR"
 }
@@ -33,22 +54,16 @@ trap 'exit 1' HUP INT TERM
 command -v curl >/dev/null 2>&1 || { echo "curl is required" >&2; exit 1; }
 
 print_banner() {
-  cat <<'EOF'
+  # stderr so banner stays visible with `curl … | bash` and download progress.
+  cat <<'EOF' >&2
 
-██╗     ███████╗ █████╗ ██████╗
-██║     ██╔════╝██╔══██╗██╔══██╗
-██║     █████╗  ███████║██║  ██║
-██║     ██╔══╝  ██╔══██║██║  ██║
-███████╗███████╗██║  ██║██████╔╝
-╚══════╝╚══════╝╚═╝  ╚═╝╚═════╝
- █████╗  ██████╗  ██████╗ ██████╗ ███████╗ ██████╗  █████╗ ████████╗ ██████╗ ██████╗
-██╔══██╗██╔════╝ ██╔════╝ ██╔══██╗██╔════╝██╔════╝ ██╔══██╗╚══██╔══╝██╔═══██╗██╔══██╗
-███████║██║  ███╗██║  ███╗██████╔╝█████╗  ██║  ███╗███████║   ██║   ██║   ██║██████╔╝
-██╔══██║██║   ██║██║   ██║██╔══██╗██╔══╝  ██║   ██║██╔══██║   ██║   ██║   ██║██╔══██╗
-██║  ██║╚██████╔╝╚██████╔╝██║  ██║███████╗╚██████╔╝██║  ██║   ██║   ╚██████╔╝██║  ██║
-╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝
-
-  Desktop lead collector · catalogs → CSV / Excel / JSON
+██╗     ███████╗ █████╗ ██████╗      █████╗  ██████╗  ██████╗ ██████╗ ███████╗ ██████╗  █████╗ ████████╗ ██████╗ ██████╗
+██║     ██╔════╝██╔══██╗██╔══██╗    ██╔══██╗██╔════╝ ██╔════╝ ██╔══██╗██╔════╝██╔════╝ ██╔══██╗╚══██╔══╝██╔═══██╗██╔══██╗
+██║     █████╗  ███████║██║  ██║    ███████║██║  ███╗██║  ███╗██████╔╝█████╗  ██║  ███╗███████║   ██║   ██║   ██║██████╔╝
+██║     ██╔══╝  ██╔══██║██║  ██║    ██╔══██║██║   ██║██║   ██║██╔══██╗██╔══╝  ██║   ██║██╔══██║   ██║   ██║   ██║██╔══██╗
+███████╗███████╗██║  ██║██████╔╝    ██║  ██║╚██████╔╝╚██████╔╝██║  ██║███████╗╚██████╔╝██║  ██║   ██║   ╚██████╔╝██║  ██║
+╚══════╝╚══════╝╚═╝  ╚═╝╚═════╝     ╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝
+  Lead Aggregator · desktop lead collector · catalogs → CSV / Excel / JSON
 
 EOF
 }
@@ -97,10 +112,10 @@ if [[ -z "$ASSET_URL" ]]; then
 fi
 
 PACKAGE_PATH="${TEMP_DIR}/installer${ASSET_SUFFIX##*_}"
-printf 'Downloading: %s\n' "$ASSET_URL"
+printf 'Downloading: %s\n' "$ASSET_URL" >&2
 # Progress bar on stderr (works with `curl … | bash`; keep API calls silent above).
 curl --fail --location --progress-bar --show-error "$ASSET_URL" -o "$PACKAGE_PATH"
-printf '\n'
+printf '\n' >&2
 
 print_gatekeeper_help() {
   local app_path="$1"
@@ -163,21 +178,23 @@ install_macos_app() {
 }
 
 if [[ "$INSTALL_KIND" == macos ]]; then
-  command -v hdiutil >/dev/null 2>&1 || { echo "hdiutil is required" >&2; exit 1; }
   command -v ditto >/dev/null 2>&1 || { echo "ditto is required" >&2; exit 1; }
+  if ! command -v diskutil >/dev/null 2>&1 && ! command -v hdiutil >/dev/null 2>&1; then
+    echo "diskutil or hdiutil is required" >&2
+    exit 1
+  fi
   INSTALL_DIR="$(macos_default_install_dir)"
   APP_DEST="${INSTALL_DIR}/${APP_NAME}.app"
-  mkdir -p "$MOUNT_POINT"
-  hdiutil attach "$PACKAGE_PATH" -nobrowse -readonly -mountpoint "$MOUNT_POINT" >/dev/null
+  attach_image "$PACKAGE_PATH" "$MOUNT_POINT"
   MOUNTED=1
   APP_SOURCE="$MOUNT_POINT/${APP_NAME}.app"
   [[ -d "$APP_SOURCE" ]] || { echo "The disk image does not contain ${APP_NAME}.app" >&2; exit 1; }
 
   install_macos_app "$APP_SOURCE" "$APP_DEST"
-  printf 'Installed: %s\n' "$APP_DEST"
+  printf 'Installed: %s\n' "$APP_DEST" >&2
 
   if [[ "$INSTALL_DIR" != "/Applications" ]]; then
-    printf 'Note: installed under %s (override via LEAD_AGGREGATOR_INSTALL_DIR or LEAD_AGGREGATOR_USER_INSTALL=1).\n' "$INSTALL_DIR"
+    printf 'Note: installed under %s (override via LEAD_AGGREGATOR_INSTALL_DIR or LEAD_AGGREGATOR_USER_INSTALL=1).\n' "$INSTALL_DIR" >&2
   fi
 
   if ! open "$APP_DEST" 2>/dev/null; then
