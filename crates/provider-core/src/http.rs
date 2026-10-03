@@ -7,7 +7,7 @@ use url::Url;
 use crate::challenge::{ChallengeEvidence, ChallengeKind, detect_challenge};
 
 const DESKTOP_USER_AGENT: &str =
-    "Lead-Aggregator/0.4.3 (+desktop app; public catalog HTML; no browser automation)";
+    "Lead-Aggregator/0.4.4 (+desktop app; public catalog HTML; no browser automation)";
 
 #[derive(Clone)]
 pub struct CatalogHttpClient {
@@ -63,7 +63,7 @@ impl CatalogHttpClient {
             .and_then(|value| value.to_str().ok())
             .and_then(|value| value.parse::<u64>().ok());
 
-        if status == StatusCode::TOO_MANY_REQUESTS {
+        if classify_http_block(status.as_u16()) == Some(ErrorKind::RateLimited) {
             let diagnostics = ResponseDiagnostics {
                 source,
                 http_status: Some(status.as_u16()),
@@ -84,7 +84,7 @@ impl CatalogHttpClient {
             .with_diagnostics(diagnostics));
         }
 
-        if status == StatusCode::FORBIDDEN {
+        if classify_http_block(status.as_u16()) == Some(ErrorKind::Blocked) {
             let body = response.text().await.unwrap_or_default();
             let title = crate::challenge::detect_challenge(&ChallengeEvidence {
                 source,
@@ -168,5 +168,43 @@ impl CatalogHttpClient {
         }
 
         Ok(body)
+    }
+}
+
+/// Pure mapping used by CatalogHttpClient (unit-tested without network).
+pub fn classify_http_block(status: u16) -> Option<ErrorKind> {
+    match status {
+        429 => Some(ErrorKind::RateLimited),
+        403 => Some(ErrorKind::Blocked),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn http_429_and_403_map_for_all_sources() {
+        for source in [
+            SourceKind::TwoGis,
+            SourceKind::Yell,
+            SourceKind::Zoon,
+            SourceKind::Rusprofile,
+        ] {
+            assert_eq!(
+                classify_http_block(429),
+                Some(ErrorKind::RateLimited),
+                "{source:?}"
+            );
+            assert_eq!(
+                classify_http_block(403),
+                Some(ErrorKind::Blocked),
+                "{source:?}"
+            );
+            assert_eq!(classify_http_block(200), None, "{source:?}");
+            assert_eq!(classify_http_block(404), None, "{source:?}");
+            let _ = source;
+        }
     }
 }
