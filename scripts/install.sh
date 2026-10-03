@@ -2,11 +2,11 @@
 set -euo pipefail
 
 REPOSITORY="1tuz/Lead-Aggregator"
-INSTALL_DIR="${HOME}/Applications"
 APP_NAME="Lead Aggregator"
 TEMP_DIR="$(mktemp -d)"
 MOUNT_POINT="${TEMP_DIR}/mount"
 MOUNTED=0
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 
 cleanup() {
   if [[ "$MOUNTED" == 1 ]]; then
@@ -65,17 +65,86 @@ PACKAGE_PATH="${TEMP_DIR}/installer${ASSET_SUFFIX##*_}"
 printf 'Downloading: %s\n' "$ASSET_URL"
 curl --fail --location --silent --show-error "$ASSET_URL" -o "$PACKAGE_PATH"
 
+choose_macos_install_dir() {
+  if [[ -n "${LEAD_AGGREGATOR_INSTALL_DIR:-}" ]]; then
+    printf '%s\n' "$LEAD_AGGREGATOR_INSTALL_DIR"
+    return
+  fi
+  if [[ -d /Applications && -w /Applications ]]; then
+    printf '/Applications\n'
+    return
+  fi
+  if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    printf '/Applications\n'
+    return
+  fi
+  # Fallback: user Applications. Finder "Applications" sidebar usually shows /Applications only.
+  printf '%s\n' "${HOME}/Applications"
+}
+
+print_gatekeeper_help() {
+  local app_path="$1"
+  cat >&2 <<EOF
+macOS blocked the unsigned release build (no Apple Developer ID / notarization yet).
+
+Open once via Finder:
+  1. open "$(dirname "$app_path")"
+  2. Right-click "${APP_NAME}.app" → Open → Open
+Or clear quarantine and retry:
+  xattr -dr com.apple.quarantine "${app_path}"
+  open "${app_path}"
+If macOS still says the app is damaged, System Settings → Privacy & Security → Open Anyway.
+EOF
+}
+
 if [[ "$INSTALL_KIND" == macos ]]; then
   command -v hdiutil >/dev/null 2>&1 || { echo "hdiutil is required" >&2; exit 1; }
   command -v ditto >/dev/null 2>&1 || { echo "ditto is required" >&2; exit 1; }
-  mkdir -p "$MOUNT_POINT" "$INSTALL_DIR"
+  INSTALL_DIR="$(choose_macos_install_dir)"
+  APP_DEST="${INSTALL_DIR}/${APP_NAME}.app"
+  mkdir -p "$MOUNT_POINT"
+  if [[ "$INSTALL_DIR" == "/Applications" && ! -w /Applications ]]; then
+    sudo mkdir -p /Applications
+  else
+    mkdir -p "$INSTALL_DIR"
+  fi
   hdiutil attach "$PACKAGE_PATH" -nobrowse -readonly -mountpoint "$MOUNT_POINT" >/dev/null
   MOUNTED=1
   APP_SOURCE="$MOUNT_POINT/${APP_NAME}.app"
   [[ -d "$APP_SOURCE" ]] || { echo "The disk image does not contain ${APP_NAME}.app" >&2; exit 1; }
-  ditto "$APP_SOURCE" "$INSTALL_DIR/${APP_NAME}.app"
-  printf 'Installed: %s/%s.app\n' "$INSTALL_DIR" "$APP_NAME"
-  open "$INSTALL_DIR/${APP_NAME}.app"
+
+  if [[ "$INSTALL_DIR" == "/Applications" && ! -w /Applications ]]; then
+    sudo rm -rf "$APP_DEST"
+    sudo ditto "$APP_SOURCE" "$APP_DEST"
+    sudo xattr -dr com.apple.quarantine "$APP_DEST" 2>/dev/null || true
+    if command -v codesign >/dev/null 2>&1; then
+      # CI ships linker-signed adhoc bundles that Gatekeeper rejects as incomplete.
+      sudo codesign --force --deep --sign - "$APP_DEST" >/dev/null 2>&1 || true
+    fi
+    if [[ -x "$LSREGISTER" ]]; then
+      sudo "$LSREGISTER" -f "$APP_DEST" >/dev/null 2>&1 || true
+    fi
+  else
+    rm -rf "$APP_DEST"
+    ditto "$APP_SOURCE" "$APP_DEST"
+    xattr -dr com.apple.quarantine "$APP_DEST" 2>/dev/null || true
+    if command -v codesign >/dev/null 2>&1; then
+      codesign --force --deep --sign - "$APP_DEST" >/dev/null 2>&1 || true
+    fi
+    if [[ -x "$LSREGISTER" ]]; then
+      "$LSREGISTER" -f "$APP_DEST" >/dev/null 2>&1 || true
+    fi
+  fi
+
+  printf 'Installed: %s\n' "$APP_DEST"
+  if [[ "$INSTALL_DIR" != "/Applications" ]]; then
+    printf 'Note: installed under %s (not /Applications). Finder Applications list may hide it.\n' "$INSTALL_DIR"
+  fi
+
+  if ! open "$APP_DEST" 2>/dev/null; then
+    print_gatekeeper_help "$APP_DEST"
+    exit 1
+  fi
 else
   if [[ "$EUID" -eq 0 ]]; then
     apt install --yes "$PACKAGE_PATH"
