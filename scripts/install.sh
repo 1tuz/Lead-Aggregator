@@ -76,7 +76,9 @@ fi
 
 PACKAGE_PATH="${TEMP_DIR}/installer${ASSET_SUFFIX##*_}"
 printf 'Downloading: %s\n' "$ASSET_URL"
-curl --fail --location --silent --show-error "$ASSET_URL" -o "$PACKAGE_PATH"
+# Progress bar on stderr (works with `curl … | bash`; keep API calls silent above).
+curl --fail --location --progress-bar --show-error "$ASSET_URL" -o "$PACKAGE_PATH"
+printf '\n'
 
 print_gatekeeper_help() {
   local app_path="$1"
