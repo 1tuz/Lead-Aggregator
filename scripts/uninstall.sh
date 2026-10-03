@@ -4,6 +4,10 @@ set -euo pipefail
 APP_NAME="Lead Aggregator"
 BUNDLE_ID="dev.local.lead-aggregator"
 PROCESS_PATTERN="twogis-extractor-desktop"
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/macos-paths.sh
+source "${SCRIPT_DIR}/lib/macos-paths.sh"
 
 removed_any=0
 
@@ -18,6 +22,18 @@ remove_path() {
   fi
   printf 'Removed: %s\n' "$path"
   removed_any=1
+}
+
+unregister_app() {
+  local path="$1"
+  [[ -x "$LSREGISTER" ]] || return 0
+  if [[ -e "$path" ]]; then
+    if [[ "$path" == /Applications/* ]] && [[ ! -w /Applications ]]; then
+      sudo "$LSREGISTER" -u "$path" >/dev/null 2>&1 || true
+    else
+      "$LSREGISTER" -u "$path" >/dev/null 2>&1 || true
+    fi
+  fi
 }
 
 stop_app() {
@@ -35,6 +51,9 @@ uninstall_macos() {
   local system_app="/Applications/${APP_NAME}.app"
   local user_app="${HOME}/Applications/${APP_NAME}.app"
 
+  unregister_app "$system_app"
+  unregister_app "$user_app"
+
   if [[ -d "$system_app" ]]; then
     if [[ -w "/Applications" && -w "$system_app" ]]; then
       remove_path "$system_app" 0
@@ -49,17 +68,9 @@ uninstall_macos() {
 
   remove_path "$user_app" 0
 
-  # App data / caches / UI state for this bundle id.
-  remove_path "${HOME}/Library/Application Support/${BUNDLE_ID}" 0
-  remove_path "${HOME}/Library/Caches/${BUNDLE_ID}" 0
-  remove_path "${HOME}/Library/WebKit/${BUNDLE_ID}" 0
-  remove_path "${HOME}/Library/Preferences/${BUNDLE_ID}.plist" 0
-  remove_path "${HOME}/Library/Saved Application State/${BUNDLE_ID}.savedState" 0
-  remove_path "${HOME}/Library/Logs/${BUNDLE_ID}" 0
-
-  # Legacy id from earlier package names, if present.
-  remove_path "${HOME}/Library/Application Support/com.twogis.extractor" 0
-  remove_path "${HOME}/Library/Caches/com.twogis.extractor" 0
+  while IFS= read -r path; do
+    remove_path "$path" 0
+  done < <(macos_data_paths "$BUNDLE_ID"; macos_legacy_data_paths)
 
   if [[ "$removed_any" -eq 0 ]]; then
     printf 'Nothing to remove. %s was not found in /Applications or ~/Applications.\n' "$APP_NAME"

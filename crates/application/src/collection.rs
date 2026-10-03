@@ -394,6 +394,7 @@ fn provider_state_for_error(kind: ErrorKind) -> ProviderRunState {
         ErrorKind::RateLimited => ProviderRunState::RateLimited,
         ErrorKind::Blocked => ProviderRunState::Blocked,
         ErrorKind::CaptchaRequired => ProviderRunState::CaptchaRequired,
+        ErrorKind::ChallengeRequired => ProviderRunState::ChallengeRequired,
         ErrorKind::Cancelled => ProviderRunState::Cancelled,
         _ => ProviderRunState::Failed,
     }

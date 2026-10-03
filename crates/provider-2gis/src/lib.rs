@@ -4,33 +4,28 @@ use std::{collections::HashSet, time::Duration};
 
 use async_trait::async_trait;
 use futures::{StreamExt, stream};
-use reqwest::{Client, StatusCode};
 use scraper::{Html, Selector};
 use twogis_domain::{
     AppError, ErrorKind, ProgressPhase, ProviderRunState, ScrapeProgress, SearchRequest, SourceKind,
 };
 use twogis_provider_core::{
-    DirectoryProvider, ProgressSink, ProviderControl, ProviderOutput, ProviderPolicy,
-    ProviderRuntime,
+    CatalogHttpClient, DirectoryProvider, ProgressSink, ProviderControl, ProviderOutput,
+    ProviderPolicy, ProviderRuntime,
 };
 use url::Url;
 
 #[derive(Clone)]
 pub struct TwoGisHtmlProvider {
-    client: Client,
+    http: CatalogHttpClient,
     base: Url,
 }
 
 impl TwoGisHtmlProvider {
     pub fn new() -> Result<Self, AppError> {
-        let client = Client::builder()
-            .user_agent("lead-aggregator/0.4 (+local desktop app; public HTML only)")
-            .timeout(Duration::from_secs(20))
-            .build()
-            .map_err(|e| AppError::network(format!("failed to create HTTP client: {e}")))?;
+        let http = CatalogHttpClient::new()?;
         let base = Url::parse("https://2gis.ru/")
             .map_err(|e| AppError::new(ErrorKind::Internal, e.to_string(), false))?;
-        Ok(Self { client, base })
+        Ok(Self { http, base })
     }
 
     fn search_url(&self, request: &SearchRequest, page: u16) -> Result<Url, AppError> {
@@ -51,56 +46,7 @@ impl TwoGisHtmlProvider {
     }
 
     async fn fetch_html(&self, url: &Url) -> Result<String, AppError> {
-        let response = self
-            .client
-            .get(url.clone())
-            .header("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.6")
-            .send()
-            .await
-            .map_err(|e| AppError::network(format!("request failed for {url}: {e}")))?;
-
-        let retry_after = response
-            .headers()
-            .get(reqwest::header::RETRY_AFTER)
-            .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.parse::<u64>().ok());
-
-        match response.status() {
-            StatusCode::TOO_MANY_REQUESTS => {
-                return Err(AppError::new(
-                    ErrorKind::RateLimited,
-                    "2GIS returned HTTP 429; respecting the server rate limit",
-                    true,
-                )
-                .with_retry_after(retry_after));
-            }
-            StatusCode::FORBIDDEN => {
-                return Err(AppError::new(
-                    ErrorKind::Blocked,
-                    "2GIS returned HTTP 403. No anti-bot bypass is attempted.",
-                    true,
-                ));
-            }
-            status if !status.is_success() => {
-                return Err(AppError::network(format!(
-                    "2GIS returned HTTP {status} for {url}"
-                )));
-            }
-            _ => {}
-        }
-
-        let html = response
-            .text()
-            .await
-            .map_err(|e| AppError::network(format!("failed to read {url}: {e}")))?;
-        if is_challenge_html(&html) {
-            return Err(AppError::new(
-                ErrorKind::CaptchaRequired,
-                "2GIS requested a CAPTCHA/anti-bot check; provider stopped",
-                true,
-            ));
-        }
-        Ok(html)
+        self.http.get_html(SourceKind::TwoGis, url).await
     }
 
     async fn fetch_with_backoff(
@@ -137,7 +83,10 @@ impl TwoGisHtmlProvider {
                 Err(err)
                     if matches!(
                         err.kind,
-                        ErrorKind::Blocked | ErrorKind::CaptchaRequired | ErrorKind::RateLimited
+                        ErrorKind::Blocked
+                            | ErrorKind::CaptchaRequired
+                            | ErrorKind::ChallengeRequired
+                            | ErrorKind::RateLimited
                     ) =>
                 {
                     control.cancel();
@@ -308,7 +257,10 @@ impl DirectoryProvider for TwoGisHtmlProvider {
                 Err(err)
                     if matches!(
                         err.kind,
-                        ErrorKind::RateLimited | ErrorKind::Blocked | ErrorKind::CaptchaRequired
+                        ErrorKind::RateLimited
+                            | ErrorKind::Blocked
+                            | ErrorKind::CaptchaRequired
+                            | ErrorKind::ChallengeRequired
                     ) =>
                 {
                     terminal_error.get_or_insert(err);
@@ -323,13 +275,6 @@ impl DirectoryProvider for TwoGisHtmlProvider {
         output.organizations.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(output)
     }
-}
-
-fn is_challenge_html(html: &str) -> bool {
-    let lower = html.to_lowercase();
-    lower.contains("captcha")
-        || lower.contains("подтвердите, что вы не робот")
-        || lower.contains("проверка безопасности")
 }
 
 #[cfg(test)]
@@ -350,11 +295,5 @@ mod tests {
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].1, "Alpha");
         Ok(())
-    }
-
-    #[test]
-    fn identifies_captcha_response_in_html() {
-        assert!(is_challenge_html("<title>CAPTCHA</title>"));
-        assert!(!is_challenge_html("<h1>Автосервис</h1>"));
     }
 }

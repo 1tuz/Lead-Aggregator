@@ -4,100 +4,31 @@ use async_trait::async_trait;
 use chrono::Utc;
 use futures::{StreamExt, stream};
 use regex::Regex;
-use reqwest::{Client, StatusCode};
 use scraper::{Html, Selector};
 use twogis_domain::{
     AppError, ErrorKind, Organization, ProgressPhase, ProviderRunState, ScrapeProgress,
     SearchRequest, SourceKind,
 };
 use twogis_provider_core::{
-    DirectoryProvider, ProgressSink, ProviderControl, ProviderOutput, ProviderPolicy,
-    ProviderRuntime,
+    CatalogHttpClient, DirectoryProvider, ProgressSink, ProviderControl, ProviderOutput,
+    ProviderPolicy, ProviderRuntime,
 };
 use url::Url;
 
 #[derive(Clone)]
 struct SafeHttp {
-    client: Client,
+    client: CatalogHttpClient,
 }
 
 impl SafeHttp {
     fn new() -> Result<Self, AppError> {
-        let client = Client::builder()
-            .user_agent("lead-aggregator/0.4 (+local desktop app; public HTML only)")
-            .timeout(Duration::from_secs(25))
-            .build()
-            .map_err(|e| AppError::network(format!("failed to create HTTP client: {e}")))?;
-        Ok(Self { client })
+        Ok(Self {
+            client: CatalogHttpClient::new()?,
+        })
     }
 
     async fn fetch(&self, source: SourceKind, url: &Url) -> Result<String, AppError> {
-        let response = self
-            .client
-            .get(url.clone())
-            .header("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.5")
-            .send()
-            .await
-            .map_err(|e| {
-                AppError::network(format!("{} request failed for {url}: {e}", source.label()))
-            })?;
-
-        let retry_after = response
-            .headers()
-            .get(reqwest::header::RETRY_AFTER)
-            .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.parse::<u64>().ok());
-
-        match response.status() {
-            StatusCode::TOO_MANY_REQUESTS => {
-                return Err(AppError::new(
-                    ErrorKind::RateLimited,
-                    format!(
-                        "{} returned HTTP 429; respecting Retry-After/backoff",
-                        source.label()
-                    ),
-                    true,
-                )
-                .with_retry_after(retry_after));
-            }
-            StatusCode::FORBIDDEN => {
-                return Err(AppError::new(
-                    ErrorKind::Blocked,
-                    format!(
-                        "{} returned HTTP 403; no anti-bot bypass is attempted",
-                        source.label()
-                    ),
-                    true,
-                ));
-            }
-            status if !status.is_success() => {
-                return Err(AppError::network(format!(
-                    "{} returned HTTP {status} for {url}",
-                    source.label()
-                )));
-            }
-            _ => {}
-        }
-
-        let body = response
-            .text()
-            .await
-            .map_err(|e| AppError::network(format!("failed to read {url}: {e}")))?;
-        let lower = body.to_lowercase();
-        if lower.contains("captcha")
-            || lower.contains("подтвердите, что вы не робот")
-            || lower.contains("проверка безопасности")
-        {
-            return Err(AppError::new(
-                ErrorKind::CaptchaRequired,
-                format!(
-                    "{} requested a CAPTCHA/anti-bot check; provider stopped",
-                    source.label()
-                ),
-                true,
-            ));
-        }
-        Ok(body)
+        self.client.get_html(source, url).await
     }
 
     async fn fetch_with_backoff(
@@ -135,7 +66,10 @@ impl SafeHttp {
                 Err(err)
                     if matches!(
                         err.kind,
-                        ErrorKind::Blocked | ErrorKind::CaptchaRequired | ErrorKind::RateLimited
+                        ErrorKind::Blocked
+                            | ErrorKind::CaptchaRequired
+                            | ErrorKind::ChallengeRequired
+                            | ErrorKind::RateLimited
                     ) =>
                 {
                     control.cancel();
@@ -511,7 +445,10 @@ async fn enrich_candidates<P: PublicCatalog>(
             Err(err)
                 if matches!(
                     err.kind,
-                    ErrorKind::RateLimited | ErrorKind::Blocked | ErrorKind::CaptchaRequired
+                    ErrorKind::RateLimited
+                        | ErrorKind::Blocked
+                        | ErrorKind::CaptchaRequired
+                        | ErrorKind::ChallengeRequired
                 ) =>
             {
                 terminal_error.get_or_insert(err);

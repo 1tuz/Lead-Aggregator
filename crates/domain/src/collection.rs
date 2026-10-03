@@ -116,6 +116,7 @@ pub enum ProviderRunState {
     RateLimited,
     Blocked,
     CaptchaRequired,
+    ChallengeRequired,
     Completed,
     Failed,
     Cancelled,

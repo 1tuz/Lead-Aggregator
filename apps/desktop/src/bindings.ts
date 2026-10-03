@@ -26,7 +26,7 @@ export type AppError = {
 	retryAfterSeconds: number | null,
 };
 
-export type ErrorKind = "validation" | "network" | "rateLimited" | "blocked" | "captchaRequired" | "parse" | "storage" | "export" | "cancelled" | "internal";
+export type ErrorKind = "validation" | "network" | "rateLimited" | "blocked" | "captchaRequired" | "challengeRequired" | "parse" | "storage" | "export" | "cancelled" | "internal";
 
 export type CollectionPreset = "gentle" | "normal" | "custom";
 

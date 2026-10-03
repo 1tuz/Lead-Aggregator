@@ -4,7 +4,7 @@ use std::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use async_trait::async_trait;
@@ -16,6 +16,14 @@ use tokio_util::sync::CancellationToken;
 use twogis_domain::{
     AppError, ErrorKind, Organization, ProviderRunState, ScrapeProgress, SearchRequest, SourceKind,
 };
+
+pub mod challenge;
+pub mod http;
+
+pub use challenge::{
+    ChallengeConfidence, ChallengeDetection, ChallengeEvidence, ChallengeKind, detect_challenge,
+};
+pub use http::CatalogHttpClient;
 
 pub type ProgressSink = Arc<dyn Fn(ScrapeProgress) + Send + Sync>;
 
@@ -135,6 +143,16 @@ impl ProviderRuntime {
         self.concurrency
     }
 
+    fn jitter(&self) -> Duration {
+        // Small random spread so timers are not perfectly periodic. Not an anti-bot bypass.
+        let max_jitter_ms = (self.delay.as_millis() as u64 / 5).clamp(50, 800);
+        let seed = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|value| value.subsec_nanos() as u64)
+            .unwrap_or(0);
+        Duration::from_millis(seed % (max_jitter_ms + 1))
+    }
+
     async fn acquire(
         &self,
         control: &ProviderControl,
@@ -155,7 +173,7 @@ impl ProviderRuntime {
                 _ = sleep_until(*next_request) => {}
             }
         }
-        *next_request = Instant::now() + self.delay;
+        *next_request = Instant::now() + self.delay + self.jitter();
         Ok(permit)
     }
 
@@ -169,6 +187,20 @@ impl ProviderRuntime {
             result = future => result,
         }
     }
+}
+
+#[async_trait]
+pub trait DirectoryProvider: Send + Sync {
+    fn source(&self) -> SourceKind;
+    fn id(&self) -> &'static str;
+    fn policy(&self) -> ProviderPolicy;
+
+    async fn search(
+        &self,
+        request: &SearchRequest,
+        progress: ProgressSink,
+        control: ProviderControl,
+    ) -> Result<ProviderOutput, AppError>;
 }
 
 #[cfg(test)]
@@ -221,18 +253,4 @@ mod tests {
         });
         control.wait_ready().await.expect("control should resume");
     }
-}
-
-#[async_trait]
-pub trait DirectoryProvider: Send + Sync {
-    fn source(&self) -> SourceKind;
-    fn id(&self) -> &'static str;
-    fn policy(&self) -> ProviderPolicy;
-
-    async fn search(
-        &self,
-        request: &SearchRequest,
-        progress: ProgressSink,
-        control: ProviderControl,
-    ) -> Result<ProviderOutput, AppError>;
 }
