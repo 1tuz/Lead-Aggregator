@@ -1,13 +1,39 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+REPOSITORY="1tuz/Lead-Aggregator"
+RAW_SCRIPTS_BASE="https://raw.githubusercontent.com/${REPOSITORY}/main/scripts"
 APP_NAME="Lead Aggregator"
 BUNDLE_ID="dev.local.lead-aggregator"
 PROCESS_PATTERN="twogis-extractor-desktop"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=lib/macos-paths.sh
-source "${SCRIPT_DIR}/lib/macos-paths.sh"
+TEMP_DIR="$(mktemp -d)"
+
+cleanup() {
+  rm -rf "$TEMP_DIR"
+}
+trap cleanup EXIT
+
+load_macos_paths() {
+  local script_path="${BASH_SOURCE[0]:-}"
+  if [[ -n "$script_path" && -f "$script_path" ]]; then
+    local dir helper
+    dir="$(cd "$(dirname "$script_path")" && pwd)"
+    helper="${dir}/lib/macos-paths.sh"
+    if [[ -f "$helper" ]]; then
+      # shellcheck source=lib/macos-paths.sh
+      source "$helper"
+      return 0
+    fi
+  fi
+  command -v curl >/dev/null 2>&1 || { echo "curl is required to fetch uninstall helpers" >&2; exit 1; }
+  local remote_helper="${TEMP_DIR}/macos-paths.sh"
+  curl --fail --location --silent --show-error \
+    "${RAW_SCRIPTS_BASE}/lib/macos-paths.sh" -o "$remote_helper"
+  # shellcheck disable=SC1090
+  source "$remote_helper"
+}
+load_macos_paths
 
 removed_any=0
 
