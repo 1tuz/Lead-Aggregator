@@ -22,9 +22,26 @@
 curl -fsSL https://raw.githubusercontent.com/1tuz/Lead-Aggregator/main/scripts/install.sh | bash
 ```
 
-Скрипт определит систему и архитектуру, скачает готовую сборку из [GitHub Releases](https://github.com/1tuz/Lead-Aggregator/releases), установит и запустит приложение. Если в последнем релизе нет сборки для вашей системы, он возьмёт последнюю доступную. На macOS приложение появится в `~/Applications/Lead Aggregator.app`; на Debian/Ubuntu установщик `.deb` попросит `sudo` для установки системного пакета.
+Скрипт определит систему и архитектуру, скачает готовую сборку из [GitHub Releases](https://github.com/1tuz/Lead-Aggregator/releases), установит и запустит приложение. Если в последнем релизе нет сборки для вашей системы, он возьмёт последнюю доступную. На macOS приложение ставится в `/Applications/Lead Aggregator.app` (если каталог доступен для записи; иначе в `~/Applications`, либо задайте `LEAD_AGGREGATOR_INSTALL_DIR`). На Debian/Ubuntu установщик `.deb` попросит `sudo` для установки системного пакета.
+
+Сборки macOS пока без Apple Developer ID и notarization. На macOS 15+ Gatekeeper часто показывает «повреждено» / «не удалось проверить» — это не битый DMG и не обязательно crash приложения. Тогда: правый клик по приложению → Open → Open, либо `xattr -dr com.apple.quarantine "/Applications/Lead Aggregator.app"` (или тот же путь в `~/Applications`). При необходимости: System Settings → Privacy & Security → Open Anyway.
 
 На Windows скачайте `.msi` из [последнего GitHub Release](https://github.com/1tuz/Lead-Aggregator/releases) и запустите его.
+
+### Удаление
+
+macOS / Debian/Ubuntu — остановить процесс, снять приложение из `/Applications` и `~/Applications`, плюс локальные данные:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/1tuz/Lead-Aggregator/main/scripts/uninstall.sh | bash
+```
+
+Скрипт удаляет:
+
+- `/Applications/Lead Aggregator.app` и `~/Applications/Lead Aggregator.app`
+- `~/Library/Application Support/dev.local.lead-aggregator` (база и настройки)
+- кэш / WebKit / Preferences / Saved State с тем же bundle id
+- на Linux — пакет через `apt`, плюс пользовательские data/cache/config каталоги
 
 Для ручной сборки macOS-версии нужны macOS 13+, Xcode Command Line Tools, Rust 1.96+, Node.js 22+ и pnpm 11+.
 
