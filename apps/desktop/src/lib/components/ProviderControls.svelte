@@ -21,29 +21,29 @@
   };
 
   const safeMinimums: Record<SourceKind, { delay: number; concurrency: number }> = {
-    twoGis: { delay: 650, concurrency: 4 },
-    yell: { delay: 1000, concurrency: 2 },
-    zoon: { delay: 1500, concurrency: 1 },
-    rusprofile: { delay: 2500, concurrency: 1 },
+    twoGis: { delay: 1500, concurrency: 1 },
+    yell: { delay: 2000, concurrency: 1 },
+    zoon: { delay: 3000, concurrency: 1 },
+    rusprofile: { delay: 4500, concurrency: 1 },
   };
 
   function recommended(source: SourceKind, preset: Exclude<CollectionPreset, 'custom'>): ProviderSearchConfig {
     const table: Record<SourceKind, Record<'gentle' | 'normal', Omit<ProviderSearchConfig, 'source' | 'enabled' | 'preset'>>> = {
       twoGis: {
-        gentle: { maxResults: 10000, maxPages: 500, concurrency: 2, requestDelayMs: 1200, maxRetries: 2, backoffBaseSeconds: 45 },
-        normal: { maxResults: 10000, maxPages: 500, concurrency: 3, requestDelayMs: 800, maxRetries: 1, backoffBaseSeconds: 30 },
+        gentle: { maxResults: 2000, maxPages: 50, concurrency: 1, requestDelayMs: 2000, maxRetries: 2, backoffBaseSeconds: 60 },
+        normal: { maxResults: 10000, maxPages: 500, concurrency: 1, requestDelayMs: 1500, maxRetries: 1, backoffBaseSeconds: 45 },
       },
       yell: {
-        gentle: { maxResults: 7500, maxPages: 500, concurrency: 1, requestDelayMs: 1800, maxRetries: 2, backoffBaseSeconds: 60 },
-        normal: { maxResults: 7500, maxPages: 500, concurrency: 2, requestDelayMs: 1200, maxRetries: 1, backoffBaseSeconds: 45 },
+        gentle: { maxResults: 1500, maxPages: 50, concurrency: 1, requestDelayMs: 2500, maxRetries: 2, backoffBaseSeconds: 90 },
+        normal: { maxResults: 7500, maxPages: 500, concurrency: 1, requestDelayMs: 2000, maxRetries: 1, backoffBaseSeconds: 60 },
       },
       zoon: {
-        gentle: { maxResults: 5000, maxPages: 400, concurrency: 1, requestDelayMs: 2500, maxRetries: 2, backoffBaseSeconds: 90 },
-        normal: { maxResults: 5000, maxPages: 400, concurrency: 1, requestDelayMs: 1800, maxRetries: 1, backoffBaseSeconds: 60 },
+        gentle: { maxResults: 1000, maxPages: 40, concurrency: 1, requestDelayMs: 3500, maxRetries: 2, backoffBaseSeconds: 120 },
+        normal: { maxResults: 5000, maxPages: 400, concurrency: 1, requestDelayMs: 3000, maxRetries: 1, backoffBaseSeconds: 90 },
       },
       rusprofile: {
-        gentle: { maxResults: 10000, maxPages: 1000, concurrency: 1, requestDelayMs: 4000, maxRetries: 2, backoffBaseSeconds: 120 },
-        normal: { maxResults: 10000, maxPages: 1000, concurrency: 1, requestDelayMs: 3000, maxRetries: 1, backoffBaseSeconds: 90 },
+        gentle: { maxResults: 1000, maxPages: 50, concurrency: 1, requestDelayMs: 5000, maxRetries: 2, backoffBaseSeconds: 180 },
+        normal: { maxResults: 10000, maxPages: 1000, concurrency: 1, requestDelayMs: 4500, maxRetries: 1, backoffBaseSeconds: 120 },
       },
     };
     const current = configs.find((config) => config.source === source);

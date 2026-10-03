@@ -33,19 +33,21 @@ pub struct ProviderSearchConfig {
 
 impl ProviderSearchConfig {
     pub fn recommended(source: SourceKind, preset: CollectionPreset) -> Self {
+        // Gentle = default safe smoke. Normal = larger jobs, still clamped by ProviderPolicy.
         let (delay, concurrency, results, pages, retries, backoff) = match (source, preset) {
-            (SourceKind::TwoGis, CollectionPreset::Gentle) => (1_200, 2, 10_000, 500, 2, 45),
-            (SourceKind::TwoGis, _) => (800, 3, 10_000, 500, 1, 30),
-            (SourceKind::Yell, CollectionPreset::Gentle) => (1_800, 1, 7_500, 500, 2, 60),
-            (SourceKind::Yell, _) => (1_200, 2, 7_500, 500, 1, 45),
-            (SourceKind::Zoon, CollectionPreset::Gentle) => (2_500, 1, 5_000, 400, 2, 90),
-            (SourceKind::Zoon, _) => (1_800, 1, 5_000, 400, 1, 60),
-            (SourceKind::Rusprofile, CollectionPreset::Gentle) => (4_000, 1, 10_000, 1_000, 2, 120),
-            (SourceKind::Rusprofile, _) => (3_000, 1, 10_000, 1_000, 1, 90),
+            (SourceKind::TwoGis, CollectionPreset::Gentle) => (2_000, 1, 2_000, 50, 2, 60),
+            (SourceKind::TwoGis, _) => (1_500, 1, 10_000, 500, 1, 45),
+            (SourceKind::Yell, CollectionPreset::Gentle) => (2_500, 1, 1_500, 50, 2, 90),
+            (SourceKind::Yell, _) => (2_000, 1, 7_500, 500, 1, 60),
+            (SourceKind::Zoon, CollectionPreset::Gentle) => (3_500, 1, 1_000, 40, 2, 120),
+            (SourceKind::Zoon, _) => (3_000, 1, 5_000, 400, 1, 90),
+            (SourceKind::Rusprofile, CollectionPreset::Gentle) => (5_000, 1, 1_000, 50, 2, 180),
+            (SourceKind::Rusprofile, _) => (4_500, 1, 10_000, 1_000, 1, 120),
         };
         Self {
             source,
-            enabled: matches!(source, SourceKind::TwoGis | SourceKind::Yell),
+            // One source by default: parallel catalogs raise CAPTCHA risk on shared IPs.
+            enabled: matches!(source, SourceKind::TwoGis),
             max_results: results,
             max_pages: pages,
             concurrency,
@@ -101,7 +103,7 @@ pub fn default_provider_configs() -> Vec<ProviderSearchConfig> {
         SourceKind::Rusprofile,
     ]
     .into_iter()
-    .map(|source| ProviderSearchConfig::recommended(source, CollectionPreset::Normal))
+    .map(|source| ProviderSearchConfig::recommended(source, CollectionPreset::Gentle))
     .collect()
 }
 
@@ -187,11 +189,32 @@ mod tests {
     #[test]
     fn provider_defaults_are_source_specific() {
         let two_gis =
-            ProviderSearchConfig::recommended(SourceKind::TwoGis, CollectionPreset::Normal);
+            ProviderSearchConfig::recommended(SourceKind::TwoGis, CollectionPreset::Gentle);
         let rusprofile =
-            ProviderSearchConfig::recommended(SourceKind::Rusprofile, CollectionPreset::Normal);
+            ProviderSearchConfig::recommended(SourceKind::Rusprofile, CollectionPreset::Gentle);
         assert!(two_gis.request_delay_ms < rusprofile.request_delay_ms);
-        assert!(two_gis.concurrency > rusprofile.concurrency);
+        assert_eq!(two_gis.concurrency, 1);
+        assert_eq!(rusprofile.concurrency, 1);
+        assert!(two_gis.enabled);
+        assert!(!rusprofile.enabled);
+    }
+
+    #[test]
+    fn default_provider_configs_use_gentle_preset() {
+        let configs = default_provider_configs();
+        assert!(
+            configs
+                .iter()
+                .all(|config| config.preset == CollectionPreset::Gentle)
+        );
+        assert_eq!(
+            configs
+                .iter()
+                .filter(|config| config.enabled)
+                .map(|config| config.source)
+                .collect::<Vec<_>>(),
+            vec![SourceKind::TwoGis]
+        );
     }
 
     #[test]

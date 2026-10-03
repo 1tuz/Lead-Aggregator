@@ -201,7 +201,7 @@ impl DirectoryProvider for TwoGisHtmlProvider {
     }
 
     fn policy(&self) -> ProviderPolicy {
-        ProviderPolicy::conservative(650, 4)
+        ProviderPolicy::conservative(1_500, 1)
     }
 
     async fn search(
