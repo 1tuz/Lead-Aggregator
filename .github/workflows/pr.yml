@@ -30,6 +30,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: rustfmt
@@ -37,7 +39,9 @@ jobs:
         with:
           cache-on-failure: true
       - name: Git whitespace
-        run: git diff --check origin/${{ github.base_ref }}...HEAD
+        run: |
+          git fetch --no-tags origin "${{ github.base_ref }}"
+          git diff --check "origin/${{ github.base_ref }}...HEAD"
       - name: Rust format
         run: cargo fmt --all -- --check
       - name: Rust check (core)
