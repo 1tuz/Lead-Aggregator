@@ -326,11 +326,23 @@ pub enum ErrorKind {
     RateLimited,
     Blocked,
     CaptchaRequired,
+    ChallengeRequired,
     Parse,
     Storage,
     Export,
     Cancelled,
     Internal,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ResponseDiagnostics {
+    pub source: SourceKind,
+    pub http_status: Option<u16>,
+    pub request_url: String,
+    pub final_url: Option<String>,
+    pub page_title: Option<String>,
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type, Error)]
@@ -342,6 +354,8 @@ pub struct AppError {
     pub retryable: bool,
     #[serde(default)]
     pub retry_after_seconds: Option<u64>,
+    #[serde(default)]
+    pub diagnostics: Option<ResponseDiagnostics>,
 }
 
 impl AppError {
@@ -351,11 +365,17 @@ impl AppError {
             message: message.into(),
             retryable,
             retry_after_seconds: None,
+            diagnostics: None,
         }
     }
 
     pub fn with_retry_after(mut self, seconds: Option<u64>) -> Self {
         self.retry_after_seconds = seconds;
+        self
+    }
+
+    pub fn with_diagnostics(mut self, diagnostics: ResponseDiagnostics) -> Self {
+        self.diagnostics = Some(diagnostics);
         self
     }
 

@@ -29,9 +29,10 @@
     queued: 'В очереди',
     running: 'Сбор',
     paused: 'Пауза',
-    rateLimited: 'Ограничение частоты',
-    blocked: 'Доступ ограничен',
+    rateLimited: 'HTTP 429',
+    blocked: 'HTTP 403',
     captchaRequired: 'CAPTCHA',
+    challengeRequired: 'Anti-bot',
     completed: 'Готово',
     failed: 'Ошибка',
     cancelled: 'Остановлено',
@@ -45,7 +46,7 @@
     {#if statuses.length > 0}
       <div class="status-grid">
         {#each statuses as status (status.source)}
-          <article class:warning={['rateLimited', 'blocked', 'captchaRequired', 'failed'].includes(status.state)}>
+          <article class:warning={['rateLimited', 'blocked', 'captchaRequired', 'challengeRequired', 'failed'].includes(status.state)}>
             <div class="title"><strong>{labels[status.source]}</strong><span>{stateLabels[status.state]}</span></div>
             <p>{status.region || '—'} · {status.message}</p>
             {#if status.total && status.total > 0}

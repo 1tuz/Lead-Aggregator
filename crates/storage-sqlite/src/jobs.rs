@@ -455,6 +455,7 @@ fn provider_state_id(state: ProviderRunState) -> &'static str {
         ProviderRunState::RateLimited => "rate_limited",
         ProviderRunState::Blocked => "blocked",
         ProviderRunState::CaptchaRequired => "captcha_required",
+        ProviderRunState::ChallengeRequired => "challenge_required",
         ProviderRunState::Completed => "completed",
         ProviderRunState::Failed => "failed",
         ProviderRunState::Cancelled => "cancelled",

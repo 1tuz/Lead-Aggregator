@@ -31,7 +31,7 @@ export type {
   SourceKind,
 };
 
-export type ProviderRunState = 'queued' | 'running' | 'paused' | 'rateLimited' | 'blocked' | 'captchaRequired' | 'completed' | 'failed' | 'cancelled';
+export type ProviderRunState = 'queued' | 'running' | 'paused' | 'rateLimited' | 'blocked' | 'captchaRequired' | 'challengeRequired' | 'completed' | 'failed' | 'cancelled';
 
 export type ProviderStatus = {
   source: SourceKind;

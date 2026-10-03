@@ -7,6 +7,9 @@ TEMP_DIR="$(mktemp -d)"
 MOUNT_POINT="${TEMP_DIR}/mount"
 MOUNTED=0
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/macos-paths.sh
+source "${SCRIPT_DIR}/lib/macos-paths.sh"
 
 cleanup() {
   if [[ "$MOUNTED" == 1 ]]; then
@@ -65,23 +68,6 @@ PACKAGE_PATH="${TEMP_DIR}/installer${ASSET_SUFFIX##*_}"
 printf 'Downloading: %s\n' "$ASSET_URL"
 curl --fail --location --silent --show-error "$ASSET_URL" -o "$PACKAGE_PATH"
 
-choose_macos_install_dir() {
-  if [[ -n "${LEAD_AGGREGATOR_INSTALL_DIR:-}" ]]; then
-    printf '%s\n' "$LEAD_AGGREGATOR_INSTALL_DIR"
-    return
-  fi
-  if [[ -d /Applications && -w /Applications ]]; then
-    printf '/Applications\n'
-    return
-  fi
-  if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-    printf '/Applications\n'
-    return
-  fi
-  # Fallback: user Applications. Finder "Applications" sidebar usually shows /Applications only.
-  printf '%s\n' "${HOME}/Applications"
-}
-
 print_gatekeeper_help() {
   local app_path="$1"
   cat >&2 <<EOF
@@ -97,48 +83,67 @@ If macOS still says the app is damaged, System Settings â†’ Privacy & Security â
 EOF
 }
 
+install_macos_app() {
+  local app_source="$1"
+  local app_dest="$2"
+  local needs_sudo=0
+  local dest_dir
+  dest_dir="$(dirname "$app_dest")"
+
+  if [[ "$dest_dir" == "/Applications" ]] && [[ ! -w /Applications ]]; then
+    needs_sudo=1
+  fi
+
+  if [[ "$needs_sudo" == 1 ]]; then
+    command -v sudo >/dev/null 2>&1 || {
+      echo "Administrator rights are required to install into /Applications." >&2
+      exit 1
+    }
+    sudo mkdir -p /Applications
+    sudo rm -rf "$app_dest"
+    sudo ditto "$app_source" "$app_dest"
+    sudo xattr -dr com.apple.quarantine "$app_dest" 2>/dev/null || true
+    if command -v codesign >/dev/null 2>&1; then
+      sudo codesign --force --deep --sign - "$app_dest" >/dev/null 2>&1 || true
+    fi
+    if [[ -x "$LSREGISTER" ]]; then
+      sudo "$LSREGISTER" -f "$app_dest" >/dev/null 2>&1 || true
+    fi
+  else
+    mkdir -p "$dest_dir"
+    rm -rf "$app_dest"
+    ditto "$app_source" "$app_dest"
+    xattr -dr com.apple.quarantine "$app_dest" 2>/dev/null || true
+    if command -v codesign >/dev/null 2>&1; then
+      codesign --force --deep --sign - "$app_dest" >/dev/null 2>&1 || true
+    fi
+    if [[ -x "$LSREGISTER" ]]; then
+      "$LSREGISTER" -f "$app_dest" >/dev/null 2>&1 || true
+    fi
+  fi
+
+  [[ -d "$app_dest" ]] || {
+    echo "Install failed: ${app_dest} was not created" >&2
+    exit 1
+  }
+}
+
 if [[ "$INSTALL_KIND" == macos ]]; then
   command -v hdiutil >/dev/null 2>&1 || { echo "hdiutil is required" >&2; exit 1; }
   command -v ditto >/dev/null 2>&1 || { echo "ditto is required" >&2; exit 1; }
-  INSTALL_DIR="$(choose_macos_install_dir)"
+  INSTALL_DIR="$(macos_default_install_dir)"
   APP_DEST="${INSTALL_DIR}/${APP_NAME}.app"
   mkdir -p "$MOUNT_POINT"
-  if [[ "$INSTALL_DIR" == "/Applications" && ! -w /Applications ]]; then
-    sudo mkdir -p /Applications
-  else
-    mkdir -p "$INSTALL_DIR"
-  fi
   hdiutil attach "$PACKAGE_PATH" -nobrowse -readonly -mountpoint "$MOUNT_POINT" >/dev/null
   MOUNTED=1
   APP_SOURCE="$MOUNT_POINT/${APP_NAME}.app"
   [[ -d "$APP_SOURCE" ]] || { echo "The disk image does not contain ${APP_NAME}.app" >&2; exit 1; }
 
-  if [[ "$INSTALL_DIR" == "/Applications" && ! -w /Applications ]]; then
-    sudo rm -rf "$APP_DEST"
-    sudo ditto "$APP_SOURCE" "$APP_DEST"
-    sudo xattr -dr com.apple.quarantine "$APP_DEST" 2>/dev/null || true
-    if command -v codesign >/dev/null 2>&1; then
-      # CI ships linker-signed adhoc bundles that Gatekeeper rejects as incomplete.
-      sudo codesign --force --deep --sign - "$APP_DEST" >/dev/null 2>&1 || true
-    fi
-    if [[ -x "$LSREGISTER" ]]; then
-      sudo "$LSREGISTER" -f "$APP_DEST" >/dev/null 2>&1 || true
-    fi
-  else
-    rm -rf "$APP_DEST"
-    ditto "$APP_SOURCE" "$APP_DEST"
-    xattr -dr com.apple.quarantine "$APP_DEST" 2>/dev/null || true
-    if command -v codesign >/dev/null 2>&1; then
-      codesign --force --deep --sign - "$APP_DEST" >/dev/null 2>&1 || true
-    fi
-    if [[ -x "$LSREGISTER" ]]; then
-      "$LSREGISTER" -f "$APP_DEST" >/dev/null 2>&1 || true
-    fi
-  fi
-
+  install_macos_app "$APP_SOURCE" "$APP_DEST"
   printf 'Installed: %s\n' "$APP_DEST"
+
   if [[ "$INSTALL_DIR" != "/Applications" ]]; then
-    printf 'Note: installed under %s (not /Applications). Finder Applications list may hide it.\n' "$INSTALL_DIR"
+    printf 'Note: installed under %s (override via LEAD_AGGREGATOR_INSTALL_DIR or LEAD_AGGREGATOR_USER_INSTALL=1).\n' "$INSTALL_DIR"
   fi
 
   if ! open "$APP_DEST" 2>/dev/null; then
