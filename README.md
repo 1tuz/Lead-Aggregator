@@ -19,10 +19,10 @@
 Установите последнюю сборку macOS на Apple Silicon или Linux на Debian/Ubuntu x86_64 одной командой:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/1tuz/Lead-Aggregator/main/scripts/install.sh | bash
+curl -fsSL "https://raw.githubusercontent.com/1tuz/Lead-Aggregator/main/scripts/install.sh?$(date +%s)" | bash
 ```
 
-Скрипт определит систему и архитектуру, скачает готовую сборку из [GitHub Releases](https://github.com/1tuz/Lead-Aggregator/releases), установит и запустит приложение. Если в последнем релизе нет сборки для вашей системы, он возьмёт последнюю доступную. На macOS по умолчанию ставится в `/Applications/Lead Aggregator.app` (при необходимости запросит `sudo`). Пользовательский каталог — только через `LEAD_AGGREGATOR_INSTALL_DIR` или `LEAD_AGGREGATOR_USER_INSTALL=1`. На Debian/Ubuntu установщик `.deb` попросит `sudo` для установки системного пакета.
+Скрипт самодостаточный (без внешних `source`) и работает через `curl | bash`. Он определит систему и архитектуру, скачает готовую сборку из [GitHub Releases](https://github.com/1tuz/Lead-Aggregator/releases), установит и запустит приложение. Если в последнем релизе нет сборки для вашей системы, он возьмёт последнюю доступную. На macOS по умолчанию ставится в `/Applications/Lead Aggregator.app` (при необходимости запросит `sudo`). Пользовательский каталог — только через `LEAD_AGGREGATOR_INSTALL_DIR` или `LEAD_AGGREGATOR_USER_INSTALL=1`. На Debian/Ubuntu установщик `.deb` попросит `sudo` для установки системного пакета.
 
 Сборки macOS пока без Apple Developer ID и notarization. На macOS 15+ Gatekeeper часто показывает «повреждено» / «не удалось проверить» — это не битый DMG и не обязательно crash приложения. Тогда: правый клик по приложению → Open → Open, либо `xattr -dr com.apple.quarantine "/Applications/Lead Aggregator.app"` (или тот же путь в `~/Applications`). При необходимости: System Settings → Privacy & Security → Open Anyway.
 
@@ -33,7 +33,7 @@ curl -fsSL https://raw.githubusercontent.com/1tuz/Lead-Aggregator/main/scripts/i
 macOS / Debian/Ubuntu — остановить процесс, снять приложение из `/Applications` и `~/Applications`, плюс локальные данные:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/1tuz/Lead-Aggregator/main/scripts/uninstall.sh | bash
+curl -fsSL "https://raw.githubusercontent.com/1tuz/Lead-Aggregator/main/scripts/uninstall.sh?$(date +%s)" | bash
 ```
 
 Скрипт удаляет:

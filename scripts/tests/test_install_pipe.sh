@@ -18,84 +18,36 @@ assert_ok() {
 
 assert_ok "install.sh syntax" bash -n "${ROOT}/scripts/install.sh"
 assert_ok "uninstall.sh syntax" bash -n "${ROOT}/scripts/uninstall.sh"
-assert_ok "local install sources lib" bash -c "
-  set -euo pipefail
-  # shellcheck disable=SC1091
-  source '${ROOT}/scripts/lib/macos-paths.sh'
-  test \"\$(macos_default_install_dir)\" = '/Applications'
-"
 
-# Reproduce curl|bash: no BASH_SOURCE file, must fetch helper.
-PIPE_SCRIPT="$(mktemp)"
-trap 'rm -f "$PIPE_SCRIPT"' EXIT
-cat >"$PIPE_SCRIPT" <<EOF
-set -euo pipefail
-REPOSITORY="1tuz/Lead-Aggregator"
-RAW_SCRIPTS_BASE="file://${ROOT}/scripts"
-TEMP_DIR="\$(mktemp -d)"
-trap 'rm -rf "\$TEMP_DIR"' EXIT
-load_macos_paths() {
-  local script_path="\${BASH_SOURCE[0]:-}"
-  if [[ -n "\$script_path" && -f "\$script_path" ]]; then
-    local dir helper
-    dir="\$(cd "\$(dirname "\$script_path")" && pwd)"
-    helper="\${dir}/lib/macos-paths.sh"
-    if [[ -f "\$helper" ]]; then
-      source "\$helper"
-      return 0
-    fi
-  fi
-  local remote_helper="\${TEMP_DIR}/macos-paths.sh"
-  curl --fail --location --silent --show-error \\
-    "\${RAW_SCRIPTS_BASE}/lib/macos-paths.sh" -o "\$remote_helper"
-  source "\$remote_helper"
-}
-load_macos_paths
-test "\$(macos_default_install_dir)" = "/Applications"
-echo LOADED
-EOF
-
-# Pipe through bash so BASH_SOURCE[0] is not a real script file path.
-if out="$(bash <"$PIPE_SCRIPT")"; then
-  if [[ "$out" == *LOADED* ]]; then
-    printf 'ok piped helper load without BASH_SOURCE file\n'
-  else
-    printf 'FAIL piped helper load: unexpected output: %s\n' "$out" >&2
-    FAIL=1
-  fi
-else
-  printf 'FAIL piped helper load\n' >&2
+# Piped install must not reference BASH_SOURCE or external lib/.
+if grep -nE 'BASH_SOURCE|macos-paths\.sh' "${ROOT}/scripts/install.sh" "${ROOT}/scripts/uninstall.sh" >/tmp/lead-agg-pipe-scan.err; then
+  printf 'FAIL install/uninstall still depend on BASH_SOURCE/lib source\n' >&2
+  cat /tmp/lead-agg-pipe-scan.err >&2
   FAIL=1
+else
+  printf 'ok install/uninstall are self-contained\n'
 fi
 
-# Ensure the real install.sh no longer trips unbound BASH_SOURCE when piped.
-# Stub network-heavy part by exiting immediately after load_macos_paths.
+# Simulate curl|bash: pipe script, exit before network download.
 STUB="$(mktemp)"
-trap 'rm -f "$PIPE_SCRIPT" "$STUB"' EXIT
+trap 'rm -f "$STUB"' EXIT
 awk '
-  BEGIN { print "set -euo pipefail" }
-  /^REPOSITORY=/ { print; next }
-  /^RAW_SCRIPTS_BASE=/ {
-    print "RAW_SCRIPTS_BASE=\"file://'"${ROOT}"'/scripts\""
-    next
-  }
-  { print }
-  /^load_macos_paths$/ {
-    print "macos_default_install_dir >/dev/null"
-    print "echo LOADED"
+  /^ASSET_URL=""/ {
+    print "echo PIPE_OK"
     print "exit 0"
   }
+  { print }
 ' "${ROOT}/scripts/install.sh" >"$STUB"
 
 if out="$(bash <"$STUB")"; then
-  if [[ "$out" == *LOADED* ]]; then
-    printf 'ok piped install.sh survives helper bootstrap\n'
+  if [[ "$out" == *PIPE_OK* ]]; then
+    printf 'ok piped install.sh reaches post-bootstrap\n'
   else
-    printf 'FAIL piped install.sh bootstrap output: %s\n' "$out" >&2
+    printf 'FAIL piped install output: %s\n' "$out" >&2
     FAIL=1
   fi
 else
-  printf 'FAIL piped install.sh bootstrap\n' >&2
+  printf 'FAIL piped install.sh\n' >&2
   FAIL=1
 fi
 
