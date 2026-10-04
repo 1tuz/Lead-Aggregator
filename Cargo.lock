@@ -2165,6 +2165,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "lead-aggregator-cli"
+version = "0.4.4"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "twogis-dedupe",
+ "twogis-domain",
+ "twogis-provider",
+ "twogis-provider-core",
+ "twogis-provider-public-catalogs",
+ "url",
+]
+
+[[package]]
 name = "libappindicator"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

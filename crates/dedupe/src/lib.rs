@@ -22,6 +22,7 @@ pub fn deduplicate(rows: Vec<Organization>) -> DedupeResult {
         normalize_row(&mut row);
         let match_index = find_match(
             &row,
+            &canonical,
             &by_inn,
             &by_ogrn,
             &by_phone,
@@ -64,38 +65,67 @@ pub fn deduplicate(rows: Vec<Organization>) -> DedupeResult {
 
 fn find_match(
     row: &Organization,
+    canonical: &[Organization],
     by_inn: &HashMap<String, usize>,
     by_ogrn: &HashMap<String, usize>,
     by_phone: &HashMap<String, usize>,
     by_domain: &HashMap<String, usize>,
     by_name_address: &HashMap<String, usize>,
 ) -> Option<usize> {
-    row.inn
+    // Strong identifiers: merge unconditionally.
+    if let Some(index) = row
+        .inn
         .as_deref()
         .and_then(normalize_digits)
         .and_then(|value| by_inn.get(&value).copied())
-        .or_else(|| {
-            row.ogrn
-                .as_deref()
-                .and_then(normalize_digits)
-                .and_then(|value| by_ogrn.get(&value).copied())
-        })
-        .or_else(|| {
-            row.phones
-                .iter()
-                .filter_map(|phone| normalize_phone(phone))
-                .find_map(|phone| by_phone.get(&phone).copied())
-        })
-        .or_else(|| {
-            row.website
-                .as_deref()
-                .and_then(dedupe_domain)
-                .and_then(|domain| by_domain.get(&domain).copied())
-        })
-        .or_else(|| {
-            let key = name_address_key(row)?;
-            by_name_address.get(&key).copied()
-        })
+    {
+        return Some(index);
+    }
+    if let Some(index) = row
+        .ogrn
+        .as_deref()
+        .and_then(normalize_digits)
+        .and_then(|value| by_ogrn.get(&value).copied())
+    {
+        return Some(index);
+    }
+    if let Some(key) = name_address_key(row)
+        && let Some(index) = by_name_address.get(&key).copied()
+    {
+        return Some(index);
+    }
+
+    // Phone/domain alone are weak for franchise/call-center collisions.
+    // Require an extra corroborating signal (similar name or same address).
+    for phone in row.phones.iter().filter_map(|phone| normalize_phone(phone)) {
+        if let Some(index) = by_phone.get(&phone).copied()
+            && corroborates(row, &canonical[index])
+        {
+            return Some(index);
+        }
+    }
+    if let Some(domain) = row.website.as_deref().and_then(dedupe_domain)
+        && let Some(index) = by_domain.get(&domain).copied()
+        && corroborates(row, &canonical[index])
+    {
+        return Some(index);
+    }
+    None
+}
+
+fn corroborates(left: &Organization, right: &Organization) -> bool {
+    let left_name = normalize_name(&left.name);
+    let right_name = normalize_name(&right.name);
+    if !left_name.is_empty() && left_name == right_name {
+        return true;
+    }
+    match (
+        left.address.as_deref().map(normalize_text),
+        right.address.as_deref().map(normalize_text),
+    ) {
+        (Some(a), Some(b)) if !a.is_empty() && a == b => true,
+        _ => false,
+    }
 }
 
 fn index_row(
@@ -374,7 +404,7 @@ mod tests {
     }
 
     #[test]
-    fn merges_same_russian_phone_across_sources() {
+    fn merges_same_organization_from_two_sources_by_phone_and_name() {
         let result = deduplicate(vec![
             row("a", "Ромашка", "8 (999) 123-45-67", SourceKind::TwoGis),
             row("b", "ООО Ромашка", "+7 999 123 45 67", SourceKind::Yell),
@@ -383,6 +413,52 @@ mod tests {
         assert_eq!(result.merged_count, 1);
         assert_eq!(result.organizations[0].sources.len(), 2);
         assert_eq!(result.organizations[0].phones, vec!["+79991234567"]);
+    }
+
+    #[test]
+    fn does_not_merge_same_phone_with_different_names_and_addresses() {
+        let mut a = row(
+            "a",
+            "Автосервис Альфа",
+            "8 (999) 111-22-33",
+            SourceKind::TwoGis,
+        );
+        a.address = Some("ул. Первая, 1".into());
+        let mut b = row("b", "Автосервис Бета", "+7 999 111 22 33", SourceKind::Yell);
+        b.address = Some("ул. Вторая, 2".into());
+        let result = deduplicate(vec![a, b]);
+        assert_eq!(result.organizations.len(), 2);
+    }
+
+    #[test]
+    fn does_not_merge_franchise_domain_with_different_addresses() {
+        let mut a = row("a", "Сеть Пункт А", "", SourceKind::TwoGis);
+        a.phones.clear();
+        a.website = Some("https://franchise.example".into());
+        a.address = Some("ул. Первая, 1".into());
+        let mut b = row("b", "Сеть Пункт Б", "", SourceKind::Yell);
+        b.phones.clear();
+        b.website = Some("https://www.franchise.example/contacts".into());
+        b.address = Some("ул. Вторая, 2".into());
+        assert_eq!(deduplicate(vec![a, b]).organizations.len(), 2);
+    }
+
+    #[test]
+    fn keeps_network_branches_separate_without_strong_key() {
+        let mut a = row("a", "Шиномонтаж Сеть", "", SourceKind::TwoGis);
+        a.phones.clear();
+        a.address = Some("ул. Ленина, 1".into());
+        let mut b = row("b", "Шиномонтаж Сеть", "", SourceKind::Yell);
+        b.phones.clear();
+        b.address = Some("ул. Мира, 5".into());
+        let result = deduplicate(vec![a, b]);
+        assert_eq!(result.organizations.len(), 2);
+        assert!(
+            result
+                .organizations
+                .iter()
+                .all(|row| row.dedupe.possible_duplicate)
+        );
     }
 
     #[test]
@@ -433,7 +509,7 @@ mod tests {
     }
 
     #[test]
-    fn merges_same_inn_and_same_website_domain() {
+    fn merges_same_inn_and_same_ogrn() {
         let mut by_inn_a = row("a", "Альфа", "", SourceKind::TwoGis);
         by_inn_a.phones.clear();
         by_inn_a.inn = Some("7701234567".into());
@@ -454,11 +530,14 @@ mod tests {
             deduplicate(vec![by_ogrn_a, by_ogrn_b]).organizations.len(),
             1
         );
+    }
 
+    #[test]
+    fn merges_same_domain_only_with_corroborating_name() {
         let mut by_domain_a = row("c", "Бета", "", SourceKind::TwoGis);
         by_domain_a.phones.clear();
         by_domain_a.website = Some("https://www.beta.example/catalog".into());
-        let mut by_domain_b = row("d", "Другая компания", "", SourceKind::Yell);
+        let mut by_domain_b = row("d", "ООО Бета", "", SourceKind::Yell);
         by_domain_b.phones.clear();
         by_domain_b.website = Some("http://beta.example/contact".into());
         let domain_result = deduplicate(vec![by_domain_a, by_domain_b]);

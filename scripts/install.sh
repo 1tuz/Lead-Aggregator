@@ -89,8 +89,9 @@ case "$(uname -s)" in
   *) echo "This installer supports Apple Silicon macOS and x86_64 Debian/Ubuntu. Download the Windows .msi from https://github.com/${REPOSITORY}/releases." >&2; exit 1 ;;
 esac
 
+# /releases is newest-first. Prefer it over /releases/latest (can lag).
 ASSET_URL=""
-for release_path in releases/latest 'releases?per_page=20'; do
+for release_path in 'releases?per_page=30' releases/latest; do
   RELEASE_JSON="$(curl --fail --location --silent --show-error \
     -H 'Accept: application/vnd.github+json' \
     "https://api.github.com/repos/${REPOSITORY}/${release_path}")"
