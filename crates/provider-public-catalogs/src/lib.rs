@@ -11,7 +11,7 @@ use twogis_domain::{
 };
 use twogis_provider_core::{
     CatalogHttpClient, DirectoryProvider, ProgressSink, ProviderControl, ProviderOutput,
-    ProviderPolicy, ProviderRuntime,
+    ProviderPolicy, ProviderRuntime, StopReason, source_region_slug,
 };
 use url::Url;
 
@@ -100,10 +100,11 @@ impl YellHtmlProvider {
         })
     }
 
-    fn search_url(&self, request: &SearchRequest, page: u16) -> Result<Url, AppError> {
+    pub fn search_url(&self, request: &SearchRequest, page: u16) -> Result<Url, AppError> {
+        let region = source_region_slug(SourceKind::Yell, &request.region);
         let mut url = self
             .base
-            .join(&format!("{}/top/", request.region))
+            .join(&format!("{region}/top/"))
             .map_err(|e| AppError::parse(format!("bad Yell URL: {e}")))?;
         url.query_pairs_mut()
             .append_pair("text", request.query.trim())
@@ -111,11 +112,20 @@ impl YellHtmlProvider {
         Ok(url)
     }
 
-    fn discover(&self, request: &SearchRequest, html: &str) -> Vec<Url> {
+    pub fn discover(&self, request: &SearchRequest, html: &str) -> Vec<Url> {
+        let region = source_region_slug(SourceKind::Yell, &request.region);
+        let pattern = format!(r"^/{region}/com/[^/]+/?$");
+        let Ok(re) = Regex::new(&pattern) else {
+            return Vec::new();
+        };
         discover_links(&self.base, html, |url| {
-            url.host_str() == Some("www.yell.ru")
-                && url.path().contains(&format!("/{}/com/", request.region))
+            url.host_str() == Some("www.yell.ru") && re.is_match(url.path())
         })
+    }
+
+    pub fn has_next_page(html: &str, page: u16) -> bool {
+        let next = page.saturating_add(1);
+        html.contains(&format!("page={next}")) || html.contains(&format!("page={next}&"))
     }
 }
 
@@ -140,7 +150,7 @@ impl DirectoryProvider for YellHtmlProvider {
         control: ProviderControl,
     ) -> Result<ProviderOutput, AppError> {
         let runtime = ProviderRuntime::for_request(self.policy(), request, SourceKind::Yell);
-        let candidates = collect_candidates(
+        let (candidates, stop_reason) = collect_candidates(
             self,
             request,
             progress.clone(),
@@ -148,10 +158,26 @@ impl DirectoryProvider for YellHtmlProvider {
             runtime.clone(),
             |provider, page| provider.search_url(request, page),
             |provider, html| provider.discover(request, html),
+            |html, page| YellHtmlProvider::has_next_page(html, page),
         )
         .await?;
-        enrich_candidates(self, request, candidates, progress, control, runtime).await
+        enrich_candidates(
+            self,
+            request,
+            candidates,
+            stop_reason,
+            progress,
+            control,
+            runtime,
+        )
+        .await
     }
+}
+
+#[derive(Clone, Debug)]
+pub enum ZoonListing {
+    Category { city: String, category: String },
+    Search,
 }
 
 #[derive(Clone)]
@@ -169,19 +195,93 @@ impl ZoonHtmlProvider {
         })
     }
 
-    fn search_url(&self, request: &SearchRequest, page: u16) -> Result<Url, AppError> {
+    pub fn city_slug(request: &SearchRequest) -> String {
+        source_region_slug(SourceKind::Zoon, &request.region)
+    }
+
+    pub fn search_probe_url(&self, request: &SearchRequest) -> Result<Url, AppError> {
         let mut url = self
             .base
             .join("search/")
             .map_err(|e| AppError::parse(format!("bad Zoon URL: {e}")))?;
         url.query_pairs_mut()
-            .append_pair("city", &request.region)
+            .append_pair("city", &Self::city_slug(request))
             .append_pair("query", request.query.trim())
-            .append_pair("page", &page.to_string());
+            .append_pair("page", "1");
         Ok(url)
     }
 
-    fn discover(&self, html: &str) -> Vec<Url> {
+    pub fn listing_url(
+        &self,
+        listing: &ZoonListing,
+        request: &SearchRequest,
+        page: u16,
+    ) -> Result<Url, AppError> {
+        match listing {
+            ZoonListing::Search => {
+                let mut url = self.search_probe_url(request)?;
+                // Live check: page>1 on /search/ returns the same HTML. Keep page param only for page 1.
+                if page > 1 {
+                    url.query_pairs_mut().clear();
+                    url.query_pairs_mut()
+                        .append_pair("city", &Self::city_slug(request))
+                        .append_pair("query", request.query.trim())
+                        .append_pair("page", &page.to_string());
+                }
+                Ok(url)
+            }
+            ZoonListing::Category { city, category } => {
+                let path = if page <= 1 {
+                    format!("{city}/{category}/")
+                } else {
+                    format!("{city}/{category}/page-{page}/")
+                };
+                self.base
+                    .join(&path)
+                    .map_err(|e| AppError::parse(format!("bad Zoon category URL: {e}")))
+            }
+        }
+    }
+
+    pub fn detect_listing(&self, request: &SearchRequest, html: &str) -> ZoonListing {
+        let city = Self::city_slug(request);
+        let document = Html::parse_document(html);
+        let Ok(selector) = Selector::parse("a[href]") else {
+            return ZoonListing::Search;
+        };
+        let mut counts = std::collections::HashMap::<String, usize>::new();
+        for anchor in document.select(&selector) {
+            let Some(href) = anchor.value().attr("href") else {
+                continue;
+            };
+            let Ok(url) = self.base.join(href) else {
+                continue;
+            };
+            let segments = url
+                .path_segments()
+                .map(|segments| segments.filter(|s| !s.is_empty()).collect::<Vec<_>>())
+                .unwrap_or_default();
+            if segments.len() >= 2 && segments[0] == city {
+                let category = segments[1];
+                if matches!(
+                    category,
+                    "search" | "article" | "promo" | "pages" | "award" | "user"
+                ) {
+                    continue;
+                }
+                *counts.entry(category.to_owned()).or_default() += 1;
+            }
+        }
+        counts
+            .into_iter()
+            .max_by_key(|(_, count)| *count)
+            .filter(|(_, count)| *count >= 3)
+            .map(|(category, _)| ZoonListing::Category { city, category })
+            .unwrap_or(ZoonListing::Search)
+    }
+
+    pub fn discover(&self, request: &SearchRequest, html: &str) -> Vec<Url> {
+        let city = Self::city_slug(request);
         discover_links(&self.base, html, |url| {
             if url.host_str() != Some("zoon.ru") {
                 return false;
@@ -190,12 +290,28 @@ impl ZoonHtmlProvider {
                 .path_segments()
                 .map(|segments| segments.filter(|s| !s.is_empty()).collect::<Vec<_>>())
                 .unwrap_or_default();
-            if segments.len() != 3 {
+            if segments.len() != 3 || segments[0] != city {
                 return false;
             }
-            !matches!(segments[0], "search" | "article" | "promo")
-                && !matches!(segments[2], "reviews" | "price" | "type" | "award")
+            if segments[2].starts_with("page-") {
+                return false;
+            }
+            !matches!(
+                segments[1],
+                "search" | "article" | "promo" | "build" | "pages"
+            ) && !matches!(segments[2], "reviews" | "price" | "type" | "award")
         })
+    }
+
+    pub fn has_next_page(listing: &ZoonListing, html: &str, page: u16) -> bool {
+        match listing {
+            ZoonListing::Search => false,
+            ZoonListing::Category { city, category } => {
+                let next = page.saturating_add(1);
+                html.contains(&format!("/{city}/{category}/page-{next}/"))
+                    || html.contains(&format!("/{city}/{category}/page-{next}\""))
+            }
+        }
     }
 }
 
@@ -220,17 +336,135 @@ impl DirectoryProvider for ZoonHtmlProvider {
         control: ProviderControl,
     ) -> Result<ProviderOutput, AppError> {
         let runtime = ProviderRuntime::for_request(self.policy(), request, SourceKind::Zoon);
-        let candidates = collect_candidates(
+        let config = request.config_for(SourceKind::Zoon);
+
+        (progress)(ScrapeProgress {
+            phase: ProgressPhase::Discovering,
+            current: 0,
+            total: Some(u32::from(config.max_pages)),
+            message: "Zoon: resolve listing".into(),
+            source: Some(SourceKind::Zoon),
+            region: Some(request.region.clone()),
+            state: Some(ProviderRunState::Running),
+            retry_after_seconds: None,
+        });
+
+        let probe_url = self.search_probe_url(request)?;
+        let probe_html = self
+            .http
+            .fetch_with_backoff(
+                SourceKind::Zoon,
+                request,
+                &runtime,
+                &control,
+                &progress,
+                &probe_url,
+            )
+            .await?;
+        let listing = self.detect_listing(request, &probe_html);
+
+        let mut seen = HashSet::new();
+        let mut candidates = Vec::new();
+        let mut stop_reason = StopReason::MaxPages;
+
+        // Seed candidates from the probe page when listing stays on search.
+        if matches!(listing, ZoonListing::Search) {
+            for url in self.discover(request, &probe_html) {
+                if seen.insert(url.to_string()) {
+                    candidates.push(url);
+                }
+            }
+            stop_reason = if candidates.is_empty() {
+                StopReason::EmptyPage
+            } else {
+                // Live check: /search/?page=N does not advance results.
+                StopReason::LastPage
+            };
+        } else {
+            for page in 1..=config.max_pages {
+                if control.is_cancelled() {
+                    return Err(AppError::cancelled());
+                }
+                (progress)(ScrapeProgress {
+                    phase: ProgressPhase::Discovering,
+                    current: u32::from(page),
+                    total: Some(u32::from(config.max_pages)),
+                    message: format!("Zoon: страница {page}"),
+                    source: Some(SourceKind::Zoon),
+                    region: Some(request.region.clone()),
+                    state: Some(ProviderRunState::Running),
+                    retry_after_seconds: None,
+                });
+                let url = self.listing_url(&listing, request, page)?;
+                let html = if page == 1 {
+                    // Category page 1 differs from search probe; fetch it.
+                    self.http
+                        .fetch_with_backoff(
+                            SourceKind::Zoon,
+                            request,
+                            &runtime,
+                            &control,
+                            &progress,
+                            &url,
+                        )
+                        .await?
+                } else {
+                    self.http
+                        .fetch_with_backoff(
+                            SourceKind::Zoon,
+                            request,
+                            &runtime,
+                            &control,
+                            &progress,
+                            &url,
+                        )
+                        .await?
+                };
+                let found = self.discover(request, &html);
+                if found.is_empty() {
+                    stop_reason = StopReason::EmptyPage;
+                    break;
+                }
+                let before = candidates.len();
+                for item in found {
+                    if seen.insert(item.to_string()) {
+                        candidates.push(item);
+                        if candidates.len() >= config.max_results as usize {
+                            break;
+                        }
+                    }
+                }
+                if candidates.len() >= config.max_results as usize {
+                    stop_reason = StopReason::MaxResults;
+                    break;
+                }
+                let added = candidates.len() > before;
+                let has_next = Self::has_next_page(&listing, &html, page);
+                if !added && !has_next {
+                    stop_reason = StopReason::NoNewCandidates;
+                    break;
+                }
+                if !has_next {
+                    stop_reason = StopReason::LastPage;
+                    break;
+                }
+                if page == config.max_pages {
+                    stop_reason = StopReason::MaxPages;
+                }
+            }
+        }
+
+        candidates.truncate(config.max_results as usize);
+        enrich_candidates(
             self,
             request,
-            progress.clone(),
-            control.clone(),
-            runtime.clone(),
-            |provider, page| provider.search_url(request, page),
-            |provider, html| provider.discover(html),
+            candidates,
+            stop_reason,
+            progress,
+            control,
+            runtime,
         )
-        .await?;
-        enrich_candidates(self, request, candidates, progress, control, runtime).await
+        .await
     }
 }
 
@@ -249,24 +483,63 @@ impl RusprofileHtmlProvider {
         })
     }
 
-    fn search_url(&self, request: &SearchRequest, page: u16) -> Result<Url, AppError> {
+    /// Live check (2026-10-04): `/search?query=` returns HTTP 404 for text and INN.
+    /// Public HTML listings still work for ТН ВЭД/code pages: `/codes/{code}` and `/codes/{code}/{page}`.
+    pub fn search_url(&self, request: &SearchRequest, page: u16) -> Result<Url, AppError> {
+        if let Some(code) = normalize_rusprofile_code(request.query.trim()) {
+            let path = if page <= 1 {
+                format!("codes/{code}")
+            } else {
+                format!("codes/{code}/{page}")
+            };
+            return self
+                .base
+                .join(&path)
+                .map_err(|e| AppError::parse(format!("bad Rusprofile codes URL: {e}")));
+        }
         let mut url = self
             .base
             .join("search")
             .map_err(|e| AppError::parse(format!("bad Rusprofile URL: {e}")))?;
         url.query_pairs_mut()
-            .append_pair("query", request.query.trim())
-            .append_pair("page", &page.to_string());
+            .append_pair("query", request.query.trim());
+        if page > 1 {
+            url.query_pairs_mut().append_pair("page", &page.to_string());
+        }
         Ok(url)
     }
 
-    fn discover(&self, html: &str) -> Vec<Url> {
+    pub fn discover(&self, html: &str) -> Vec<Url> {
         discover_links(&self.base, html, |url| {
             url.host_str() == Some("www.rusprofile.ru")
                 && Regex::new(r"^/id/\d+/?$")
                     .ok()
                     .is_some_and(|re| re.is_match(url.path()))
         })
+    }
+
+    pub fn has_next_page(html: &str, page: u16) -> bool {
+        let next = page.saturating_add(1);
+        html.contains(&format!("/{next}\""))
+            || html.contains(&format!("/{next}'"))
+            || html.contains(&format!("?page={next}"))
+            || html.contains(&format!("rel=\"next\""))
+            || html.contains("rel='next'")
+    }
+}
+
+fn normalize_rusprofile_code(query: &str) -> Option<String> {
+    let trimmed = query.trim();
+    if Regex::new(r"^\d{4,10}$").ok()?.is_match(trimmed) {
+        return Some(trimmed.to_owned());
+    }
+    // Common keyword → verified public code listing (ТН ВЭД 45.2 /codes/45200000).
+    let key = trimmed.to_lowercase().replace('ё', "е");
+    match key.as_str() {
+        "автосервис" | "автосервисы" | "сто" | "автотехцентр" | "автотехцентры" => {
+            Some("45200000".into())
+        }
+        _ => None,
     }
 }
 
@@ -291,7 +564,8 @@ impl DirectoryProvider for RusprofileHtmlProvider {
         control: ProviderControl,
     ) -> Result<ProviderOutput, AppError> {
         let runtime = ProviderRuntime::for_request(self.policy(), request, SourceKind::Rusprofile);
-        let candidates = collect_candidates(
+        let uses_codes = normalize_rusprofile_code(request.query.trim()).is_some();
+        let (candidates, stop_reason) = collect_candidates(
             self,
             request,
             progress.clone(),
@@ -299,9 +573,26 @@ impl DirectoryProvider for RusprofileHtmlProvider {
             runtime.clone(),
             |provider, page| provider.search_url(request, page),
             |provider, html| provider.discover(html),
+            |html, page| {
+                if uses_codes {
+                    RusprofileHtmlProvider::has_next_page(html, page)
+                } else {
+                    // Text search endpoint is dead; never pretend page params work.
+                    false
+                }
+            },
         )
         .await?;
-        enrich_candidates(self, request, candidates, progress, control, runtime).await
+        enrich_candidates(
+            self,
+            request,
+            candidates,
+            stop_reason,
+            progress,
+            control,
+            runtime,
+        )
+        .await
     }
 }
 
@@ -325,7 +616,7 @@ impl PublicCatalog for RusprofileHtmlProvider {
     }
 }
 
-async fn collect_candidates<P, SearchUrl, Discover>(
+async fn collect_candidates<P, SearchUrl, Discover, HasNext>(
     provider: &P,
     request: &SearchRequest,
     progress: ProgressSink,
@@ -333,15 +624,18 @@ async fn collect_candidates<P, SearchUrl, Discover>(
     runtime: ProviderRuntime,
     search_url: SearchUrl,
     discover: Discover,
-) -> Result<Vec<Url>, AppError>
+    has_next: HasNext,
+) -> Result<(Vec<Url>, StopReason), AppError>
 where
     P: PublicCatalog,
     SearchUrl: Fn(&P, u16) -> Result<Url, AppError>,
     Discover: Fn(&P, &str) -> Vec<Url>,
+    HasNext: Fn(&str, u16) -> bool,
 {
     let config = request.config_for(provider.source());
     let mut seen = HashSet::new();
     let mut candidates = Vec::new();
+    let mut stop_reason = StopReason::MaxPages;
 
     for page in 1..=config.max_pages {
         if control.is_cancelled() {
@@ -370,6 +664,10 @@ where
             )
             .await?;
         let found = discover(provider, &html);
+        if found.is_empty() {
+            stop_reason = StopReason::EmptyPage;
+            break;
+        }
         let before = candidates.len();
         for url in found {
             if seen.insert(url.to_string()) {
@@ -379,23 +677,39 @@ where
                 }
             }
         }
-        if candidates.len() >= config.max_results as usize || candidates.len() == before {
+        if candidates.len() >= config.max_results as usize {
+            stop_reason = StopReason::MaxResults;
             break;
+        }
+        let added = candidates.len() > before;
+        let next = has_next(&html, page);
+        if !added && !next {
+            stop_reason = StopReason::NoNewCandidates;
+            break;
+        }
+        if !next {
+            stop_reason = StopReason::LastPage;
+            break;
+        }
+        if page == config.max_pages {
+            stop_reason = StopReason::MaxPages;
         }
     }
     candidates.truncate(config.max_results as usize);
-    Ok(candidates)
+    Ok((candidates, stop_reason))
 }
 
 async fn enrich_candidates<P: PublicCatalog>(
     provider: &P,
     request: &SearchRequest,
     candidates: Vec<Url>,
+    stop_reason: StopReason,
     progress: ProgressSink,
     control: ProviderControl,
     runtime: ProviderRuntime,
 ) -> Result<ProviderOutput, AppError> {
-    let total = candidates.len() as u32;
+    let candidate_count = candidates.len() as u32;
+    let total = candidate_count;
     let concurrency = runtime.concurrency();
     let provider = provider.clone();
     let runtime_for_stream = runtime.clone();
@@ -437,7 +751,11 @@ async fn enrich_candidates<P: PublicCatalog>(
         .collect::<Vec<_>>()
         .await;
 
-    let mut output = ProviderOutput::default();
+    let mut output = ProviderOutput {
+        stop_reason: Some(stop_reason),
+        candidate_count,
+        ..ProviderOutput::default()
+    };
     let mut terminal_error = None;
     for result in results {
         match result {
@@ -651,70 +969,82 @@ mod tests {
     use super::*;
 
     #[test]
-    fn search_urls_are_source_specific_and_bounded_to_one_page()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn yell_search_url_and_strict_company_links() -> Result<(), Box<dyn std::error::Error>> {
         let request = SearchRequest {
             region: "moscow".into(),
-            query: "стоматолог".into(),
+            query: "автосервис".into(),
             ..SearchRequest::default()
         };
         let yell = YellHtmlProvider::new()?;
+        assert_eq!(
+            yell.search_url(&request, 2)?.as_str(),
+            "https://www.yell.ru/moscow/top/?text=%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81&page=2"
+        );
+        let html = include_str!("../tests/fixtures/yell_search.html");
+        let found = yell.discover(&request, html);
+        assert_eq!(found.len(), 2);
+        assert!(found.iter().all(|url| !url.path().contains("/reviews")));
+        assert!(YellHtmlProvider::has_next_page(html, 1));
+        Ok(())
+    }
+
+    #[test]
+    fn zoon_maps_moscow_and_detects_category_listing() -> Result<(), Box<dyn std::error::Error>> {
+        let request = SearchRequest {
+            region: "moscow".into(),
+            query: "автосервис".into(),
+            ..SearchRequest::default()
+        };
         let zoon = ZoonHtmlProvider::new()?;
-        let rusprofile = RusprofileHtmlProvider::new()?;
+        let probe = zoon.search_probe_url(&request)?;
+        assert!(probe.as_str().contains("city=msk"));
+        assert!(!probe.as_str().contains("city=moscow"));
+
+        let search_html = include_str!("../tests/fixtures/zoon_search.html");
+        let listing = zoon.detect_listing(&request, search_html);
+        assert!(matches!(
+            listing,
+            ZoonListing::Category { ref city, ref category }
+                if city == "msk" && category == "autoservice"
+        ));
+        assert_eq!(zoon.discover(&request, search_html).len(), 2);
+
+        let category_html = include_str!("../tests/fixtures/zoon_category.html");
+        assert_eq!(zoon.discover(&request, category_html).len(), 2);
+        assert!(ZoonHtmlProvider::has_next_page(&listing, category_html, 1));
         assert_eq!(
-            yell.search_url(&request, 1)?.as_str(),
-            "https://www.yell.ru/moscow/top/?text=%D1%81%D1%82%D0%BE%D0%BC%D0%B0%D1%82%D0%BE%D0%BB%D0%BE%D0%B3&page=1"
-        );
-        assert_eq!(
-            zoon.search_url(&request, 1)?
-                .query_pairs()
-                .find(|(key, _)| key == "page")
-                .map(|(_, value)| value.into_owned())
-                .as_deref(),
-            Some("1")
-        );
-        assert_eq!(
-            rusprofile
-                .search_url(&request, 1)?
-                .query_pairs()
-                .find(|(key, _)| key == "query")
-                .map(|(_, value)| value.into_owned())
-                .as_deref(),
-            Some("стоматолог")
+            zoon.listing_url(&listing, &request, 2)?.as_str(),
+            "https://zoon.ru/msk/autoservice/page-2/"
         );
         Ok(())
     }
 
     #[test]
-    fn company_discovery_skips_articles_categories_and_reviews()
+    fn rusprofile_uses_codes_for_autoservice_and_discovers_ids()
     -> Result<(), Box<dyn std::error::Error>> {
         let request = SearchRequest {
             region: "moscow".into(),
+            query: "автосервис".into(),
             ..SearchRequest::default()
         };
-        let yell = YellHtmlProvider::new()?;
-        let zoon = ZoonHtmlProvider::new()?;
         let rusprofile = RusprofileHtmlProvider::new()?;
-        let yell_html = r#"<a href="/moscow/com/clinic_1/">Clinic</a><a href="/moscow/blog/article/">Article</a><a href="/moscow/top/">Category</a>"#;
-        assert_eq!(yell.discover(&request, yell_html).len(), 1);
-        let zoon_html = r#"<a href="/moscow/beauty/clinic/">Clinic</a><a href="/article/123/news/">Article</a><a href="/moscow/clinic/reviews/">Reviews</a><a href="/search/category/page/">Category</a>"#;
-        assert_eq!(zoon.discover(zoon_html).len(), 1);
-        let rusprofile_html = r#"<a href="/id/12345">Company</a><a href="/search/company">Search</a><a href="/articles/12345">Article</a>"#;
-        assert_eq!(rusprofile.discover(rusprofile_html).len(), 1);
+        assert_eq!(
+            rusprofile.search_url(&request, 1)?.as_str(),
+            "https://www.rusprofile.ru/codes/45200000"
+        );
+        assert_eq!(
+            rusprofile.search_url(&request, 2)?.as_str(),
+            "https://www.rusprofile.ru/codes/45200000/2"
+        );
+        let html = include_str!("../tests/fixtures/rusprofile_codes.html");
+        assert_eq!(rusprofile.discover(html).len(), 2);
+        assert!(RusprofileHtmlProvider::has_next_page(html, 1));
         Ok(())
     }
 
     #[test]
     fn parses_public_profile_and_requisites() -> Result<(), Box<dyn std::error::Error>> {
-        let html = r#"
-          <html><body>
-            <h1>ООО Ромашка</h1>
-            <div>Россия, г Москва, ул Тестовая, д 1</div>
-            <a href="tel:+79991234567">+7 999 123-45-67</a>
-            <a href="https://romashka.example">romashka.example</a>
-            <div>ИНН: 7701234567</div><div>ОГРН: 1027700123456</div>
-          </body></html>
-        "#;
+        let html = include_str!("../tests/fixtures/profile.html");
         let url = Url::parse("https://www.yell.ru/moscow/com/romashka_1/")?;
         let row = parse_public_profile(SourceKind::Yell, &url, html)?;
         assert_eq!(row.name, "ООО Ромашка");

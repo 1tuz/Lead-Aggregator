@@ -10,7 +10,7 @@ use twogis_domain::{
 };
 use twogis_provider_core::{
     CatalogHttpClient, DirectoryProvider, ProgressSink, ProviderControl, ProviderOutput,
-    ProviderPolicy, ProviderRuntime,
+    ProviderPolicy, ProviderRuntime, StopReason, source_region_slug,
 };
 use url::Url;
 
@@ -28,13 +28,14 @@ impl TwoGisHtmlProvider {
         Ok(Self { http, base })
     }
 
-    fn search_url(&self, request: &SearchRequest, page: u16) -> Result<Url, AppError> {
+    pub fn search_url(&self, request: &SearchRequest, page: u16) -> Result<Url, AppError> {
+        let region = source_region_slug(SourceKind::TwoGis, &request.region);
         let mut url = self.base.clone();
         {
             let mut segments = url
                 .path_segments_mut()
                 .map_err(|_| AppError::new(ErrorKind::Internal, "invalid base URL", false))?;
-            segments.push(&request.region);
+            segments.push(&region);
             segments.push("search");
             segments.push(request.query.trim());
             if page > 1 {
@@ -98,7 +99,7 @@ impl TwoGisHtmlProvider {
         Err(AppError::network("2GIS retry loop exhausted"))
     }
 
-    fn discover_firms(&self, html: &str) -> Vec<(String, String)> {
+    pub fn discover_firms(&self, html: &str) -> Vec<(String, String)> {
         let document = Html::parse_document(html);
         let Ok(selector) = Selector::parse(r#"a[href*="/firm/"]"#) else {
             return Vec::new();
@@ -126,6 +127,15 @@ impl TwoGisHtmlProvider {
             out.push((url.to_string(), name));
         }
         out
+    }
+
+    pub fn has_next_page(html: &str, page: u16) -> bool {
+        if html.contains("\"hasPagesToLoad\":true") || html.contains("\\\"hasPagesToLoad\\\":true")
+        {
+            return true;
+        }
+        let next = page.saturating_add(1);
+        html.contains(&format!("/page/{next}")) || html.contains(&format!("/page/{next}/"))
     }
 
     fn normalize_firm_url(&self, href: &str) -> Option<Url> {
@@ -165,6 +175,7 @@ impl DirectoryProvider for TwoGisHtmlProvider {
 
         let mut candidates = Vec::<(String, String)>::new();
         let mut seen = HashSet::new();
+        let mut stop_reason = StopReason::MaxPages;
 
         for page in 1..=config.max_pages {
             if control.is_cancelled() {
@@ -186,6 +197,7 @@ impl DirectoryProvider for TwoGisHtmlProvider {
                 .await?;
             let found = self.discover_firms(&html);
             if found.is_empty() {
+                stop_reason = StopReason::EmptyPage;
                 break;
             }
             let before = candidates.len();
@@ -197,13 +209,28 @@ impl DirectoryProvider for TwoGisHtmlProvider {
                     }
                 }
             }
-            if candidates.len() >= config.max_results as usize || candidates.len() == before {
+            if candidates.len() >= config.max_results as usize {
+                stop_reason = StopReason::MaxResults;
                 break;
+            }
+            let added = candidates.len() > before;
+            let has_next = Self::has_next_page(&html, page);
+            if !added && !has_next {
+                stop_reason = StopReason::NoNewCandidates;
+                break;
+            }
+            if !has_next {
+                stop_reason = StopReason::LastPage;
+                break;
+            }
+            if page == config.max_pages {
+                stop_reason = StopReason::MaxPages;
             }
         }
 
         candidates.truncate(config.max_results as usize);
-        let total = candidates.len() as u32;
+        let candidate_count = candidates.len() as u32;
+        let total = candidate_count;
         let concurrency = runtime.concurrency();
         let provider = self.clone();
         let runtime_for_stream = runtime.clone();
@@ -249,7 +276,11 @@ impl DirectoryProvider for TwoGisHtmlProvider {
             .collect::<Vec<_>>()
             .await;
 
-        let mut output = ProviderOutput::default();
+        let mut output = ProviderOutput {
+            stop_reason: Some(stop_reason),
+            candidate_count,
+            ..ProviderOutput::default()
+        };
         let mut terminal_error = None;
         for result in results {
             match result {
@@ -284,16 +315,32 @@ mod tests {
     #[test]
     fn discovers_unique_firm_links() -> Result<(), Box<dyn std::error::Error>> {
         let provider = TwoGisHtmlProvider::new()?;
-        let html = r#"
-          <html><body>
-            <a href="/moscow/firm/70000000000000001">Alpha</a>
-            <a href="/moscow/firm/70000000000000001?m=1,2">Alpha duplicate</a>
-            <a href="/moscow/firm/70000000000000002">Beta</a>
-          </body></html>
-        "#;
+        let html = include_str!("../tests/fixtures/search_page.html");
         let rows = provider.discover_firms(html);
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].1, "Alpha");
+        assert!(TwoGisHtmlProvider::has_next_page(html, 1));
+        Ok(())
+    }
+
+    #[test]
+    fn search_url_uses_page_segment() -> Result<(), Box<dyn std::error::Error>> {
+        let provider = TwoGisHtmlProvider::new()?;
+        let request = SearchRequest {
+            region: "moscow".into(),
+            query: "автосервис".into(),
+            ..SearchRequest::default()
+        };
+        assert_eq!(
+            provider.search_url(&request, 1)?.as_str(),
+            "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81"
+        );
+        assert!(
+            provider
+                .search_url(&request, 2)?
+                .as_str()
+                .ends_with("/page/2")
+        );
         Ok(())
     }
 }

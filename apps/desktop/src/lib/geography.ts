@@ -40,7 +40,7 @@ export function citySlug(cityName: string): string {
     return override;
   }
 
-  // ponytail: shared slug for all providers until per-source maps exist.
+  // Shared UI slug. Providers remap where needed (Zoon: moscow -> msk).
   const letters: Record<string, string> = {
     а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z', и: 'i', й: 'y',
     к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f',

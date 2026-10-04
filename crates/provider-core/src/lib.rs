@@ -19,11 +19,15 @@ use twogis_domain::{
 
 pub mod challenge;
 pub mod http;
+pub mod region;
+pub mod stop;
 
 pub use challenge::{
     ChallengeConfidence, ChallengeDetection, ChallengeEvidence, ChallengeKind, detect_challenge,
 };
-pub use http::CatalogHttpClient;
+pub use http::{CatalogHttpClient, DESKTOP_USER_AGENT, HtmlFetchReport};
+pub use region::source_region_slug;
+pub use stop::StopReason;
 
 pub type ProgressSink = Arc<dyn Fn(ScrapeProgress) + Send + Sync>;
 
@@ -31,6 +35,8 @@ pub type ProgressSink = Arc<dyn Fn(ScrapeProgress) + Send + Sync>;
 pub struct ProviderOutput {
     pub organizations: Vec<Organization>,
     pub warnings: Vec<String>,
+    pub stop_reason: Option<StopReason>,
+    pub candidate_count: u32,
 }
 
 #[derive(Debug, Clone, Copy)]

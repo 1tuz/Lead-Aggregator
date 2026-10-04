@@ -9,13 +9,14 @@ members = [
   "crates/export",
   "crates/application",
   "apps/desktop/src-tauri",
+  "apps/cli",
 ]
 resolver = "2"
 
 [workspace.package]
 edition = "2024"
 license = "MIT"
-version = "0.4.4"
+version = "0.4.5"
 rust-version = "1.96"
 
 [workspace.dependencies]
