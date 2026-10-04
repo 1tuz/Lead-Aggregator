@@ -50,6 +50,38 @@ impl TwoGisHtmlProvider {
         self.http.get_html(SourceKind::TwoGis, url).await
     }
 
+    async fn fetch_page_with_redirect_check(
+        &self,
+        url: &Url,
+        expected_page: u16,
+    ) -> Result<(String, Option<u16>), AppError> {
+        let report = self.http.fetch_html_report(SourceKind::TwoGis, url).await?;
+        let actual_page = Self::extract_page_from_url(&report.final_url);
+        if let Some(actual) = actual_page && actual < expected_page {
+            return Err(AppError::new(
+                ErrorKind::Network,
+                format!(
+                    "2GIS перенаправил страницу {} на страницу {}; глубокая пагинация недоступна без API-ключа",
+                    expected_page, actual
+                ),
+                false,
+            ));
+        }
+        let html = self.http.get_html(SourceKind::TwoGis, url).await?;
+        Ok((html, actual_page))
+    }
+
+    fn extract_page_from_url(url_str: &str) -> Option<u16> {
+        let url = Url::parse(url_str).ok()?;
+        let segments: Vec<_> = url.path_segments()?.collect();
+        for i in 0..segments.len().saturating_sub(1) {
+            if segments[i] == "page" {
+                return segments[i + 1].parse().ok();
+            }
+        }
+        None
+    }
+
     async fn fetch_controlled(
         &self,
         runtime: &ProviderRuntime,
@@ -161,6 +193,7 @@ impl DirectoryProvider for TwoGisHtmlProvider {
         let mut candidates = Vec::<(String, String)>::new();
         let mut seen = HashSet::new();
         let mut stop_reason = StopReason::MaxPages;
+        let mut output = ProviderOutput::default();
 
         for page in 1..=config.max_pages {
             if control.is_cancelled() {
@@ -177,7 +210,19 @@ impl DirectoryProvider for TwoGisHtmlProvider {
                 retry_after_seconds: None,
             });
             let url = self.search_url(request, page)?;
-            let html = self.fetch_controlled(&runtime, &control, &url).await?;
+            let html = if page > 1 {
+                match self.fetch_page_with_redirect_check(&url, page).await {
+                    Ok((html, _)) => html,
+                    Err(err) if err.kind == ErrorKind::Network => {
+                        output.warnings.push(err.message.clone());
+                        stop_reason = StopReason::NoNewCandidates;
+                        break;
+                    }
+                    Err(err) => return Err(err),
+                }
+            } else {
+                self.fetch_controlled(&runtime, &control, &url).await?
+            };
             let found = self.discover_firms(&html);
             if found.is_empty() {
                 stop_reason = StopReason::EmptyPage;
@@ -255,11 +300,8 @@ impl DirectoryProvider for TwoGisHtmlProvider {
             .collect::<Vec<_>>()
             .await;
 
-        let mut output = ProviderOutput {
-            stop_reason: Some(stop_reason),
-            candidate_count,
-            ..ProviderOutput::default()
-        };
+        output.stop_reason = Some(stop_reason);
+        output.candidate_count = candidate_count;
         if stop_reason == StopReason::NoNewCandidates {
             output.warnings.push(format!(
                 "2GIS: следующая страница повторила уже найденные фирмы; остановлено после {candidate_count} кандидатов. Public HTML может перенаправлять глубокие страницы на начало выдачи."
@@ -387,5 +429,21 @@ mod tests {
                 .ends_with("/page/2")
         );
         Ok(())
+    }
+
+    #[test]
+    fn extracts_page_number_from_url() {
+        assert_eq!(
+            TwoGisHtmlProvider::extract_page_from_url("https://2gis.ru/moscow/search/query/page/6"),
+            Some(6)
+        );
+        assert_eq!(
+            TwoGisHtmlProvider::extract_page_from_url("https://2gis.ru/moscow/search/query"),
+            None
+        );
+        assert_eq!(
+            TwoGisHtmlProvider::extract_page_from_url("https://2gis.ru/moscow/search/query/page/2"),
+            Some(2)
+        );
     }
 }
