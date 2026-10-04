@@ -310,6 +310,10 @@ async fn discover_twogis(request: &SearchRequest, args: &CliArgs) -> Discovery {
             .await
             .map_err(|e| e.message)?;
         maybe_save_html(args, SourceKind::TwoGis, page, &report.body);
+        if let Some(early) = early_stop(&report) {
+            pages.push(page_row(page, &report, 0, 0));
+            return Ok((pages, candidates, early.0, Some(early.1), early.2));
+        }
         let found = provider.discover_firms(&report.body);
         let mut new = 0u32;
         for (link, _) in &found {
@@ -319,20 +323,15 @@ async fn discover_twogis(request: &SearchRequest, args: &CliArgs) -> Discovery {
             }
         }
         pages.push(page_row(page, &report, found.len() as u32, new));
-        if let Some(early) = early_stop(&report) {
-            return Ok((pages, candidates, early.0, Some(early.1), early.2));
-        }
         if found.is_empty() {
             stop_reason = StopReason::EmptyPage;
             break;
         }
         let has_next = TwoGisHtmlProvider::has_next_page(&report.body, page);
-        if new == 0 && !has_next {
-            stop_reason = StopReason::NoNewCandidates;
-            break;
-        }
-        if !has_next {
-            stop_reason = StopReason::LastPage;
+        if let Some(reason) =
+            TwoGisHtmlProvider::page_stop_reason(found.len(), new as usize, has_next)
+        {
+            stop_reason = reason;
             break;
         }
     }
@@ -358,6 +357,10 @@ async fn discover_yell(request: &SearchRequest, args: &CliArgs) -> Discovery {
             .await
             .map_err(|e| e.message)?;
         maybe_save_html(args, SourceKind::Yell, page, &report.body);
+        if let Some(early) = early_stop(&report) {
+            pages.push(page_row(page, &report, 0, 0));
+            return Ok((pages, candidates, early.0, Some(early.1), early.2));
+        }
         let found = provider.discover(request, &report.body);
         let mut new = 0u32;
         for link in &found {
@@ -367,15 +370,12 @@ async fn discover_yell(request: &SearchRequest, args: &CliArgs) -> Discovery {
             }
         }
         pages.push(page_row(page, &report, found.len() as u32, new));
-        if let Some(early) = early_stop(&report) {
-            return Ok((pages, candidates, early.0, Some(early.1), early.2));
-        }
         if found.is_empty() {
             stop_reason = StopReason::EmptyPage;
             break;
         }
         let has_next = YellHtmlProvider::has_next_page(&report.body, page);
-        if new == 0 && !has_next {
+        if new == 0 {
             stop_reason = StopReason::NoNewCandidates;
             break;
         }
@@ -401,9 +401,20 @@ async fn discover_zoon(request: &SearchRequest, args: &CliArgs) -> Discovery {
         .await
         .map_err(|e| e.message)?;
     maybe_save_html(args, SourceKind::Zoon, 0, &probe.body);
+    // The probe is an HTTP request too: preserve it and stop before any listing
+    // request when the source returns a protection page.
+    if let Some(early) = early_stop(&probe) {
+        return Ok((
+            vec![page_row(0, &probe, 0, 0)],
+            0,
+            early.0,
+            Some(early.1),
+            early.2,
+        ));
+    }
     let listing = provider.detect_listing(request, &probe.body);
 
-    let mut pages = Vec::new();
+    let mut pages = vec![page_row(0, &probe, 0, 0)];
     let mut seen = HashSet::new();
     let mut candidates = 0u32;
     let mut stop_reason = StopReason::MaxPages;
@@ -418,6 +429,10 @@ async fn discover_zoon(request: &SearchRequest, args: &CliArgs) -> Discovery {
             .await
             .map_err(|e| e.message)?;
         maybe_save_html(args, SourceKind::Zoon, page, &report.body);
+        if let Some(early) = early_stop(&report) {
+            pages.push(page_row(page, &report, 0, 0));
+            return Ok((pages, candidates, early.0, Some(early.1), early.2));
+        }
         let found = provider.discover(request, &report.body);
         let mut new = 0u32;
         for link in &found {
@@ -427,9 +442,6 @@ async fn discover_zoon(request: &SearchRequest, args: &CliArgs) -> Discovery {
             }
         }
         pages.push(page_row(page, &report, found.len() as u32, new));
-        if let Some(early) = early_stop(&report) {
-            return Ok((pages, candidates, early.0, Some(early.1), early.2));
-        }
         if found.is_empty() {
             stop_reason = StopReason::EmptyPage;
             break;
@@ -439,7 +451,7 @@ async fn discover_zoon(request: &SearchRequest, args: &CliArgs) -> Discovery {
             stop_reason = StopReason::LastPage;
             break;
         }
-        if new == 0 && !has_next {
+        if new == 0 {
             stop_reason = StopReason::NoNewCandidates;
             break;
         }
@@ -470,6 +482,10 @@ async fn discover_rusprofile(request: &SearchRequest, args: &CliArgs) -> Discove
             .await
             .map_err(|e| e.message)?;
         maybe_save_html(args, SourceKind::Rusprofile, page, &report.body);
+        if let Some(early) = early_stop(&report) {
+            pages.push(page_row(page, &report, 0, 0));
+            return Ok((pages, candidates, early.0, Some(early.1), early.2));
+        }
         let found = provider.discover(&report.body);
         let mut new = 0u32;
         for link in &found {
@@ -479,27 +495,12 @@ async fn discover_rusprofile(request: &SearchRequest, args: &CliArgs) -> Discove
             }
         }
         pages.push(page_row(page, &report, found.len() as u32, new));
-        if report.http_status == 404 {
-            return Ok((
-                pages,
-                0,
-                StopReason::EmptyPage,
-                Some("wrong_url".into()),
-                Some(
-                    "Rusprofile public /search returns HTTP 404; keyword mapped listings use /codes/{code}"
-                        .into(),
-                ),
-            ));
-        }
-        if let Some(early) = early_stop(&report) {
-            return Ok((pages, candidates, early.0, Some(early.1), early.2));
-        }
         if found.is_empty() {
             stop_reason = StopReason::EmptyPage;
             break;
         }
         let has_next = RusprofileHtmlProvider::has_next_page(&report.body, page);
-        if new == 0 && !has_next {
+        if new == 0 {
             stop_reason = StopReason::NoNewCandidates;
             break;
         }
@@ -536,6 +537,16 @@ fn early_stop(
     }
     if report.http_status == 429 {
         return Some((StopReason::RateLimited, "429".into(), None));
+    }
+    if !(200..300).contains(&report.http_status) {
+        return Some((
+            StopReason::EmptyPage,
+            "wrong_url".into(),
+            Some(format!(
+                "HTTP {} for {}",
+                report.http_status, report.request_url
+            )),
+        ));
     }
     if report.challenge.error_kind() == Some(ErrorKind::CaptchaRequired) {
         return Some((
@@ -679,6 +690,11 @@ fn parse_args() -> Result<CliArgs, Box<dyn Error>> {
     }
 
     let selected = sources.or(source).unwrap_or_else(|| "all".into());
+    let mut config =
+        ProviderSearchConfig::recommended(SourceKind::TwoGis, CollectionPreset::Gentle);
+    config.max_pages = pages;
+    config.max_results = max_results;
+    config.validate().map_err(|err| invalid(&err.message))?;
     eprintln!("user-agent: {DESKTOP_USER_AGENT}");
     let _ = Url::parse("https://example.test/");
     Ok(CliArgs {
@@ -725,4 +741,55 @@ fn invalid(message: &str) -> Box<dyn Error> {
         io::ErrorKind::InvalidInput,
         message.to_owned(),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use twogis_provider_core::{ChallengeEvidence, HtmlFetchReport, detect_challenge};
+
+    fn report(status: u16, body: &str) -> HtmlFetchReport {
+        let url = "https://zoon.ru/msk/search/?query=test";
+        HtmlFetchReport {
+            request_url: url.into(),
+            final_url: url.into(),
+            http_status: status,
+            content_type: Some("text/html".into()),
+            retry_after_seconds: None,
+            body: body.into(),
+            challenge: detect_challenge(&ChallengeEvidence {
+                source: SourceKind::Zoon,
+                http_status: Some(status),
+                request_url: url,
+                final_url: Some(url),
+                html: body,
+            }),
+        }
+    }
+
+    #[test]
+    fn probe_protection_stops_discovery() {
+        for (status, expected) in [(403, "403"), (429, "429")] {
+            let response = report(status, "<html></html>");
+            assert_eq!(
+                early_stop(&response).map(|stop| stop.1),
+                Some(expected.into())
+            );
+        }
+        let response = report(
+            200,
+            "<html><title>Just a moment...</title><div id=\"cf-chl-widget\">Verify you are human</div></html>",
+        );
+        assert!(early_stop(&response).is_some());
+    }
+
+    #[test]
+    fn non_success_is_not_an_empty_success() {
+        let response = report(404, "<html>Not found</html>");
+        assert_eq!(
+            early_stop(&response).map(|stop| stop.1),
+            Some("wrong_url".into())
+        );
+        assert!(early_stop(&report(200, "<html>catalog</html>")).is_none());
+    }
 }

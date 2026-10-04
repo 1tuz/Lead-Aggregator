@@ -1,6 +1,6 @@
 mod parse;
 
-use std::{collections::HashSet, time::Duration};
+use std::collections::HashSet;
 
 use async_trait::async_trait;
 use futures::{StreamExt, stream};
@@ -50,53 +50,25 @@ impl TwoGisHtmlProvider {
         self.http.get_html(SourceKind::TwoGis, url).await
     }
 
-    async fn fetch_with_backoff(
+    async fn fetch_controlled(
         &self,
-        request: &SearchRequest,
         runtime: &ProviderRuntime,
         control: &ProviderControl,
-        progress: &ProgressSink,
         url: &Url,
     ) -> Result<String, AppError> {
-        let config = request.config_for(SourceKind::TwoGis);
-        for attempt in 0..=config.max_retries {
-            match runtime.run(control, self.fetch_html(url)).await {
-                Ok(html) => return Ok(html),
-                Err(err)
-                    if matches!(err.kind, ErrorKind::RateLimited)
-                        && attempt < config.max_retries =>
-                {
-                    let fallback = u64::from(config.backoff_base_seconds)
-                        .saturating_mul(1_u64 << attempt.min(3));
-                    let delay = err.retry_after_seconds.unwrap_or(fallback).clamp(5, 900);
-                    (progress)(ScrapeProgress {
-                        phase: ProgressPhase::Discovering,
-                        current: 0,
-                        total: None,
-                        message: format!("2GIS rate limit: retry in {delay}s"),
-                        source: Some(SourceKind::TwoGis),
-                        region: Some(request.region.clone()),
-                        state: Some(ProviderRunState::RateLimited),
-                        retry_after_seconds: Some(delay),
-                    });
-                    control.sleep(Duration::from_secs(delay)).await?;
-                }
-                Err(err)
-                    if matches!(
-                        err.kind,
-                        ErrorKind::Blocked
-                            | ErrorKind::CaptchaRequired
-                            | ErrorKind::ChallengeRequired
-                            | ErrorKind::RateLimited
-                    ) =>
-                {
-                    control.cancel();
-                    return Err(err);
-                }
-                Err(err) => return Err(err),
-            }
+        let result = runtime.run(control, self.fetch_html(url)).await;
+        if let Err(err) = &result
+            && matches!(
+                err.kind,
+                ErrorKind::Blocked
+                    | ErrorKind::CaptchaRequired
+                    | ErrorKind::ChallengeRequired
+                    | ErrorKind::RateLimited
+            )
+        {
+            control.cancel();
         }
-        Err(AppError::network("2GIS retry loop exhausted"))
+        result
     }
 
     pub fn discover_firms(&self, html: &str) -> Vec<(String, String)> {
@@ -136,6 +108,19 @@ impl TwoGisHtmlProvider {
         }
         let next = page.saturating_add(1);
         html.contains(&format!("/page/{next}")) || html.contains(&format!("/page/{next}/"))
+    }
+
+    /// A stale has-more flag must never keep a redirected/repeated page alive.
+    pub fn page_stop_reason(found: usize, new: usize, has_next: bool) -> Option<StopReason> {
+        if found == 0 {
+            Some(StopReason::EmptyPage)
+        } else if new == 0 {
+            Some(StopReason::NoNewCandidates)
+        } else if !has_next {
+            Some(StopReason::LastPage)
+        } else {
+            None
+        }
     }
 
     fn normalize_firm_url(&self, href: &str) -> Option<Url> {
@@ -192,15 +177,14 @@ impl DirectoryProvider for TwoGisHtmlProvider {
                 retry_after_seconds: None,
             });
             let url = self.search_url(request, page)?;
-            let html = self
-                .fetch_with_backoff(request, &runtime, &control, &progress, &url)
-                .await?;
+            let html = self.fetch_controlled(&runtime, &control, &url).await?;
             let found = self.discover_firms(&html);
             if found.is_empty() {
                 stop_reason = StopReason::EmptyPage;
                 break;
             }
             let before = candidates.len();
+            let found_count = found.len();
             for candidate in found {
                 if seen.insert(candidate.0.clone()) {
                     candidates.push(candidate);
@@ -213,14 +197,11 @@ impl DirectoryProvider for TwoGisHtmlProvider {
                 stop_reason = StopReason::MaxResults;
                 break;
             }
-            let added = candidates.len() > before;
             let has_next = Self::has_next_page(&html, page);
-            if !added && !has_next {
-                stop_reason = StopReason::NoNewCandidates;
-                break;
-            }
-            if !has_next {
-                stop_reason = StopReason::LastPage;
+            if let Some(reason) =
+                Self::page_stop_reason(found_count, candidates.len() - before, has_next)
+            {
+                stop_reason = reason;
                 break;
             }
             if page == config.max_pages {
@@ -236,7 +217,6 @@ impl DirectoryProvider for TwoGisHtmlProvider {
         let runtime_for_stream = runtime.clone();
         let progress_for_stream = progress.clone();
         let control_for_stream = control.clone();
-        let request_for_stream = request.clone();
 
         let results = stream::iter(candidates.into_iter().enumerate())
             .map(move |(index, (url, fallback_name))| {
@@ -244,7 +224,6 @@ impl DirectoryProvider for TwoGisHtmlProvider {
                 let runtime = runtime_for_stream.clone();
                 let progress = progress_for_stream.clone();
                 let control = control_for_stream.clone();
-                let request = request_for_stream.clone();
                 async move {
                     if control.is_cancelled() {
                         return Err(AppError::cancelled());
@@ -252,7 +231,7 @@ impl DirectoryProvider for TwoGisHtmlProvider {
                     let parsed_url = Url::parse(&url)
                         .map_err(|e| AppError::parse(format!("bad organization URL: {e}")))?;
                     let html = provider
-                        .fetch_with_backoff(&request, &runtime, &control, &progress, &parsed_url)
+                        .fetch_controlled(&runtime, &control, &parsed_url)
                         .await?;
                     let mut organization = parse::parse_firm_page(&url, &html)?;
                     organization.attach_source(SourceKind::TwoGis);
@@ -281,6 +260,11 @@ impl DirectoryProvider for TwoGisHtmlProvider {
             candidate_count,
             ..ProviderOutput::default()
         };
+        if stop_reason == StopReason::NoNewCandidates {
+            output.warnings.push(format!(
+                "2GIS: следующая страница повторила уже найденные фирмы; остановлено после {candidate_count} кандидатов. Public HTML может перенаправлять глубокие страницы на начало выдачи."
+            ));
+        }
         let mut terminal_error = None;
         for result in results {
             match result {
@@ -312,6 +296,43 @@ impl DirectoryProvider for TwoGisHtmlProvider {
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn rate_limit_cancels_without_retry() -> Result<(), Box<dyn std::error::Error>> {
+        use std::{
+            io::{Read, Write},
+            net::TcpListener,
+        };
+        let listener = TcpListener::bind("127.0.0.1:0")?;
+        let url = Url::parse(&format!("http://{}/", listener.local_addr()?))?;
+        let server = std::thread::spawn(move || {
+            if let Ok((mut socket, _)) = listener.accept() {
+                let mut request = [0; 4096];
+                let _ = socket.read(&mut request);
+                let _ = socket.write_all(b"HTTP/1.1 429 Too Many Requests\r\nRetry-After: 5\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            }
+        });
+        let control = ProviderControl::new(tokio_util::sync::CancellationToken::new());
+        let request = SearchRequest::default();
+        let runtime = ProviderRuntime::for_request(
+            ProviderPolicy::conservative(0, 1),
+            &request,
+            SourceKind::TwoGis,
+        );
+        let result = TwoGisHtmlProvider::new()?
+            .fetch_controlled(&runtime, &control, &url)
+            .await;
+        assert!(matches!(
+            result,
+            Err(AppError {
+                kind: ErrorKind::RateLimited,
+                ..
+            })
+        ));
+        assert!(control.is_cancelled());
+        assert!(server.join().is_ok());
+        Ok(())
+    }
+
     #[test]
     fn discovers_unique_firm_links() -> Result<(), Box<dyn std::error::Error>> {
         let provider = TwoGisHtmlProvider::new()?;
@@ -320,6 +341,30 @@ mod tests {
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].1, "Alpha");
         assert!(TwoGisHtmlProvider::has_next_page(html, 1));
+        Ok(())
+    }
+
+    #[test]
+    fn repeated_results_stop_even_with_stale_has_more_flag()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let provider = TwoGisHtmlProvider::new()?;
+        let html = include_str!("../tests/fixtures/repeated_page.html");
+        let first = provider.discover_firms(html);
+        let seen = first
+            .iter()
+            .map(|row| row.0.clone())
+            .collect::<HashSet<_>>();
+        let repeated = provider.discover_firms(html);
+        let new = repeated.iter().filter(|row| !seen.contains(&row.0)).count();
+        assert!(TwoGisHtmlProvider::has_next_page(html, 6));
+        assert_eq!(
+            TwoGisHtmlProvider::page_stop_reason(repeated.len(), new, true),
+            Some(StopReason::NoNewCandidates)
+        );
+        assert_eq!(
+            TwoGisHtmlProvider::page_stop_reason(first.len(), first.len(), true),
+            None
+        );
         Ok(())
     }
 

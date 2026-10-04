@@ -99,8 +99,6 @@
         <label><span>Страниц</span><input type="number" min="1" max="5000" value={config.maxPages} disabled={running} onchange={(event) => patch(config.source, { maxPages: Number(event.currentTarget.value) })} /></label>
         <label><span>Пауза, мс</span><input type="number" min="250" step="50" value={config.requestDelayMs} disabled={running} onchange={(event) => patch(config.source, { requestDelayMs: Number(event.currentTarget.value) })} /></label>
         <label><span>Параллельно</span><input type="number" min="1" max="8" value={config.concurrency} disabled={running} onchange={(event) => patch(config.source, { concurrency: Number(event.currentTarget.value) })} /></label>
-        <label><span>Повторы 429</span><input type="number" min="0" max="3" value={config.maxRetries} disabled={running} onchange={(event) => patch(config.source, { maxRetries: Number(event.currentTarget.value) })} /></label>
-        <label><span>Backoff, сек</span><input type="number" min="5" max="900" value={config.backoffBaseSeconds} disabled={running} onchange={(event) => patch(config.source, { backoffBaseSeconds: Number(event.currentTarget.value) })} /></label>
       </div>
     </details>
   {/each}

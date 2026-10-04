@@ -1,0 +1,195 @@
+{
+  "source": "2gis",
+  "region": "moscow",
+  "query": "автосервис",
+  "status": "working",
+  "pages": [
+    {
+      "page": 1,
+      "url": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81",
+      "httpStatus": 200,
+      "finalUrl": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81",
+      "challenge": null,
+      "linksFound": 12,
+      "newCandidates": 12
+    },
+    {
+      "page": 2,
+      "url": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/2",
+      "httpStatus": 200,
+      "finalUrl": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/2",
+      "challenge": null,
+      "linksFound": 12,
+      "newCandidates": 12
+    },
+    {
+      "page": 3,
+      "url": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/3",
+      "httpStatus": 200,
+      "finalUrl": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/3",
+      "challenge": null,
+      "linksFound": 12,
+      "newCandidates": 12
+    },
+    {
+      "page": 4,
+      "url": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/4",
+      "httpStatus": 200,
+      "finalUrl": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/4",
+      "challenge": null,
+      "linksFound": 12,
+      "newCandidates": 12
+    },
+    {
+      "page": 5,
+      "url": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/5",
+      "httpStatus": 200,
+      "finalUrl": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/5",
+      "challenge": null,
+      "linksFound": 12,
+      "newCandidates": 11
+    },
+    {
+      "page": 6,
+      "url": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/6",
+      "httpStatus": 200,
+      "finalUrl": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81",
+      "challenge": null,
+      "linksFound": 12,
+      "newCandidates": 0
+    },
+    {
+      "page": 7,
+      "url": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/7",
+      "httpStatus": 200,
+      "finalUrl": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81",
+      "challenge": null,
+      "linksFound": 12,
+      "newCandidates": 0
+    },
+    {
+      "page": 8,
+      "url": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/8",
+      "httpStatus": 200,
+      "finalUrl": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81",
+      "challenge": null,
+      "linksFound": 12,
+      "newCandidates": 0
+    },
+    {
+      "page": 9,
+      "url": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/9",
+      "httpStatus": 200,
+      "finalUrl": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81",
+      "challenge": null,
+      "linksFound": 12,
+      "newCandidates": 0
+    },
+    {
+      "page": 10,
+      "url": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/10",
+      "httpStatus": 200,
+      "finalUrl": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81",
+      "challenge": null,
+      "linksFound": 12,
+      "newCandidates": 0
+    },
+    {
+      "page": 11,
+      "url": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/11",
+      "httpStatus": 200,
+      "finalUrl": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81",
+      "challenge": null,
+      "linksFound": 12,
+      "newCandidates": 0
+    },
+    {
+      "page": 12,
+      "url": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/12",
+      "httpStatus": 200,
+      "finalUrl": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81",
+      "challenge": null,
+      "linksFound": 12,
+      "newCandidates": 0
+    },
+    {
+      "page": 13,
+      "url": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/13",
+      "httpStatus": 200,
+      "finalUrl": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81",
+      "challenge": null,
+      "linksFound": 12,
+      "newCandidates": 0
+    },
+    {
+      "page": 14,
+      "url": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/14",
+      "httpStatus": 200,
+      "finalUrl": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81",
+      "challenge": null,
+      "linksFound": 12,
+      "newCandidates": 0
+    },
+    {
+      "page": 15,
+      "url": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/15",
+      "httpStatus": 200,
+      "finalUrl": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81",
+      "challenge": null,
+      "linksFound": 12,
+      "newCandidates": 0
+    },
+    {
+      "page": 16,
+      "url": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/16",
+      "httpStatus": 200,
+      "finalUrl": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81",
+      "challenge": null,
+      "linksFound": 12,
+      "newCandidates": 0
+    },
+    {
+      "page": 17,
+      "url": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/17",
+      "httpStatus": 200,
+      "finalUrl": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81",
+      "challenge": null,
+      "linksFound": 12,
+      "newCandidates": 0
+    },
+    {
+      "page": 18,
+      "url": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/18",
+      "httpStatus": 200,
+      "finalUrl": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81",
+      "challenge": null,
+      "linksFound": 12,
+      "newCandidates": 0
+    },
+    {
+      "page": 19,
+      "url": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/19",
+      "httpStatus": 200,
+      "finalUrl": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81",
+      "challenge": null,
+      "linksFound": 12,
+      "newCandidates": 0
+    },
+    {
+      "page": 20,
+      "url": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/20",
+      "httpStatus": 200,
+      "finalUrl": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81",
+      "challenge": null,
+      "linksFound": 12,
+      "newCandidates": 0
+    }
+  ],
+  "candidateCount": 59,
+  "profilesLoaded": 0,
+  "parseErrors": 0,
+  "rawRecords": 0,
+  "uniqueRecords": 0,
+  "duplicatesMerged": 0,
+  "stopReason": "max_pages"
+}

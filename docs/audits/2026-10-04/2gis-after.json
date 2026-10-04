@@ -1,0 +1,69 @@
+{
+  "source": "2gis",
+  "region": "moscow",
+  "query": "автосервис",
+  "status": "duplicate_pages",
+  "pages": [
+    {
+      "page": 1,
+      "url": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81",
+      "httpStatus": 200,
+      "finalUrl": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81",
+      "challenge": null,
+      "linksFound": 12,
+      "newCandidates": 12
+    },
+    {
+      "page": 2,
+      "url": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/2",
+      "httpStatus": 200,
+      "finalUrl": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/2",
+      "challenge": null,
+      "linksFound": 12,
+      "newCandidates": 12
+    },
+    {
+      "page": 3,
+      "url": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/3",
+      "httpStatus": 200,
+      "finalUrl": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/3",
+      "challenge": null,
+      "linksFound": 12,
+      "newCandidates": 12
+    },
+    {
+      "page": 4,
+      "url": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/4",
+      "httpStatus": 200,
+      "finalUrl": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/4",
+      "challenge": null,
+      "linksFound": 12,
+      "newCandidates": 12
+    },
+    {
+      "page": 5,
+      "url": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/5",
+      "httpStatus": 200,
+      "finalUrl": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/5",
+      "challenge": null,
+      "linksFound": 12,
+      "newCandidates": 12
+    },
+    {
+      "page": 6,
+      "url": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81/page/6",
+      "httpStatus": 200,
+      "finalUrl": "https://2gis.ru/moscow/search/%D0%B0%D0%B2%D1%82%D0%BE%D1%81%D0%B5%D1%80%D0%B2%D0%B8%D1%81",
+      "challenge": null,
+      "linksFound": 12,
+      "newCandidates": 0
+    }
+  ],
+  "candidateCount": 60,
+  "profilesLoaded": 0,
+  "parseErrors": 0,
+  "rawRecords": 0,
+  "uniqueRecords": 0,
+  "duplicatesMerged": 0,
+  "stopReason": "no_new_candidates"
+}

@@ -249,6 +249,16 @@ impl ApplicationService {
                                 source.label(),
                                 err.message
                             ));
+                            // A city without a catalog page must not discard the
+                            // remaining cities in a regional collection.
+                            if err.diagnostics.as_ref().and_then(|value| value.http_status)
+                                == Some(404)
+                            {
+                                let delay = request.config_for(source).request_delay_ms
+                                    .max(provider.policy().min_delay_ms);
+                                control.sleep(Duration::from_millis(u64::from(delay))).await?;
+                                continue;
+                            }
                             // A blocked/rate-limited source stops here; other sources continue.
                             break;
                         }

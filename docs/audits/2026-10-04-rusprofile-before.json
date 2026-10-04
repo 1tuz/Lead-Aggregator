@@ -1,0 +1,25 @@
+{
+  "source": "rusprofile",
+  "region": "moscow",
+  "query": "автосервис",
+  "status": "captcha",
+  "pages": [
+    {
+      "page": 1,
+      "url": "https://www.rusprofile.ru/codes/45200000",
+      "httpStatus": 200,
+      "finalUrl": "https://www.rusprofile.ru/codes/45200000",
+      "challenge": "captcha",
+      "linksFound": 1000,
+      "newCandidates": 1000
+    }
+  ],
+  "candidateCount": 1000,
+  "profilesLoaded": 0,
+  "parseErrors": 0,
+  "rawRecords": 0,
+  "uniqueRecords": 0,
+  "duplicatesMerged": 0,
+  "stopReason": "captcha",
+  "error": "visible challenge text (я не робот)"
+}

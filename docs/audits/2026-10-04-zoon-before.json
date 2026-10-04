@@ -1,0 +1,96 @@
+{
+  "source": "zoon",
+  "region": "moscow",
+  "query": "автосервис",
+  "status": "429",
+  "pages": [
+    {
+      "page": 1,
+      "url": "https://zoon.ru/msk/autoservice/",
+      "httpStatus": 200,
+      "finalUrl": "https://zoon.ru/msk/autoservice/",
+      "challenge": null,
+      "linksFound": 34,
+      "newCandidates": 34
+    },
+    {
+      "page": 2,
+      "url": "https://zoon.ru/msk/autoservice/page-2/",
+      "httpStatus": 200,
+      "finalUrl": "https://zoon.ru/msk/autoservice/page-2/",
+      "challenge": null,
+      "linksFound": 34,
+      "newCandidates": 30
+    },
+    {
+      "page": 3,
+      "url": "https://zoon.ru/msk/autoservice/page-3/",
+      "httpStatus": 200,
+      "finalUrl": "https://zoon.ru/msk/autoservice/page-3/",
+      "challenge": null,
+      "linksFound": 34,
+      "newCandidates": 30
+    },
+    {
+      "page": 4,
+      "url": "https://zoon.ru/msk/autoservice/page-4/",
+      "httpStatus": 200,
+      "finalUrl": "https://zoon.ru/msk/autoservice/page-4/",
+      "challenge": null,
+      "linksFound": 34,
+      "newCandidates": 30
+    },
+    {
+      "page": 5,
+      "url": "https://zoon.ru/msk/autoservice/page-5/",
+      "httpStatus": 200,
+      "finalUrl": "https://zoon.ru/msk/autoservice/page-5/",
+      "challenge": null,
+      "linksFound": 34,
+      "newCandidates": 30
+    },
+    {
+      "page": 6,
+      "url": "https://zoon.ru/msk/autoservice/page-6/",
+      "httpStatus": 200,
+      "finalUrl": "https://zoon.ru/msk/autoservice/page-6/",
+      "challenge": null,
+      "linksFound": 34,
+      "newCandidates": 30
+    },
+    {
+      "page": 7,
+      "url": "https://zoon.ru/msk/autoservice/page-7/",
+      "httpStatus": 200,
+      "finalUrl": "https://zoon.ru/msk/autoservice/page-7/",
+      "challenge": null,
+      "linksFound": 34,
+      "newCandidates": 30
+    },
+    {
+      "page": 8,
+      "url": "https://zoon.ru/msk/autoservice/page-8/",
+      "httpStatus": 200,
+      "finalUrl": "https://zoon.ru/msk/autoservice/page-8/",
+      "challenge": null,
+      "linksFound": 34,
+      "newCandidates": 30
+    },
+    {
+      "page": 9,
+      "url": "https://zoon.ru/msk/autoservice/page-9/",
+      "httpStatus": 429,
+      "finalUrl": "https://zoon.ru/msk/autoservice/page-9/",
+      "challenge": null,
+      "linksFound": 0,
+      "newCandidates": 0
+    }
+  ],
+  "candidateCount": 244,
+  "profilesLoaded": 0,
+  "parseErrors": 0,
+  "rawRecords": 0,
+  "uniqueRecords": 0,
+  "duplicatesMerged": 0,
+  "stopReason": "rate_limited"
+}

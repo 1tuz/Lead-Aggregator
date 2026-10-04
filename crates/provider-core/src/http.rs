@@ -6,8 +6,11 @@ use url::Url;
 
 use crate::challenge::{ChallengeEvidence, ChallengeKind, detect_challenge};
 
-pub const DESKTOP_USER_AGENT: &str =
-    "Lead-Aggregator/0.4.5 (+desktop app; public catalog HTML; no browser automation)";
+pub const DESKTOP_USER_AGENT: &str = concat!(
+    "Lead-Aggregator/",
+    env!("CARGO_PKG_VERSION"),
+    " (+desktop app; public catalog HTML; no browser automation)"
+);
 
 #[derive(Debug, Clone)]
 pub struct HtmlFetchReport {

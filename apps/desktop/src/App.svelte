@@ -55,7 +55,7 @@
     .filter((city) => (!regionFilter || city.region === regionFilter || city.autonomousDistrict === regionFilter)
       && !allRegionsMode
       && (!normalizedLocation || normalizePlaceName(`${city.name} ${city.region} ${city.autonomousDistrict ?? ''}`).includes(normalizedLocation)))
-    .slice(0, regionFilter ? 1000 : 10);
+    .slice(0, normalizedLocation && !regionFilter ? 10 : russianCities.length);
   $: suggestions = [
     { type: 'all' as const },
     ...matchingRegions.map((name) => ({ type: 'region' as const, name })),

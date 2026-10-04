@@ -1,4 +1,4 @@
-use std::{collections::HashSet, time::Duration};
+use std::collections::HashSet;
 
 use async_trait::async_trait;
 use chrono::Utc;
@@ -31,57 +31,29 @@ impl SafeHttp {
         self.client.get_html(source, url).await
     }
 
-    async fn fetch_with_backoff(
+    async fn fetch_guarded(
         &self,
         source: SourceKind,
-        request: &SearchRequest,
         runtime: &ProviderRuntime,
         control: &ProviderControl,
-        progress: &ProgressSink,
         url: &Url,
     ) -> Result<String, AppError> {
-        let config = request.config_for(source);
-        for attempt in 0..=config.max_retries {
-            match runtime.run(control, self.fetch(source, url)).await {
-                Ok(body) => return Ok(body),
+        match runtime.run(control, self.fetch(source, url)).await {
+            Ok(body) => Ok(body),
+            Err(err)
+                if matches!(
+                    err.kind,
+                    ErrorKind::Blocked
+                        | ErrorKind::CaptchaRequired
+                        | ErrorKind::ChallengeRequired
+                        | ErrorKind::RateLimited
+                ) =>
+            {
+                control.cancel();
                 Err(err)
-                    if matches!(err.kind, ErrorKind::RateLimited)
-                        && attempt < config.max_retries =>
-                {
-                    let fallback = u64::from(config.backoff_base_seconds)
-                        .saturating_mul(1_u64 << attempt.min(3));
-                    let delay = err.retry_after_seconds.unwrap_or(fallback).clamp(5, 900);
-                    (progress)(ScrapeProgress {
-                        phase: ProgressPhase::Discovering,
-                        current: 0,
-                        total: None,
-                        message: format!("{} rate limit: retry in {delay}s", source.label()),
-                        source: Some(source),
-                        region: Some(request.region.clone()),
-                        state: Some(ProviderRunState::RateLimited),
-                        retry_after_seconds: Some(delay),
-                    });
-                    control.sleep(Duration::from_secs(delay)).await?;
-                }
-                Err(err)
-                    if matches!(
-                        err.kind,
-                        ErrorKind::Blocked
-                            | ErrorKind::CaptchaRequired
-                            | ErrorKind::ChallengeRequired
-                            | ErrorKind::RateLimited
-                    ) =>
-                {
-                    control.cancel();
-                    return Err(err);
-                }
-                Err(err) => return Err(err),
             }
+            Err(err) => Err(err),
         }
-        Err(AppError::network(format!(
-            "{} retry loop exhausted",
-            source.label()
-        )))
     }
 }
 
@@ -265,7 +237,7 @@ impl ZoonHtmlProvider {
                 let category = segments[1];
                 if matches!(
                     category,
-                    "search" | "article" | "promo" | "pages" | "award" | "user"
+                    "search" | "article" | "promo" | "pages" | "award" | "user" | "offers"
                 ) {
                     continue;
                 }
@@ -282,6 +254,9 @@ impl ZoonHtmlProvider {
 
     pub fn discover(&self, request: &SearchRequest, html: &str) -> Vec<Url> {
         let city = Self::city_slug(request);
+        // Category pages contain unrelated recommendations in the footer. Only
+        // the dominant listing category belongs to this result set.
+        let listing = self.detect_listing(request, html);
         discover_links(&self.base, html, |url| {
             if url.host_str() != Some("zoon.ru") {
                 return false;
@@ -293,13 +268,21 @@ impl ZoonHtmlProvider {
             if segments.len() != 3 || segments[0] != city {
                 return false;
             }
+            if let ZoonListing::Category { category, .. } = &listing
+                && segments[1] != category
+            {
+                return false;
+            }
             if segments[2].starts_with("page-") {
                 return false;
             }
             !matches!(
                 segments[1],
-                "search" | "article" | "promo" | "build" | "pages"
-            ) && !matches!(segments[2], "reviews" | "price" | "type" | "award")
+                "search" | "article" | "promo" | "build" | "pages" | "offers"
+            ) && !matches!(
+                segments[2],
+                "reviews" | "price" | "type" | "award" | "network"
+            )
         })
     }
 
@@ -352,14 +335,7 @@ impl DirectoryProvider for ZoonHtmlProvider {
         let probe_url = self.search_probe_url(request)?;
         let probe_html = self
             .http
-            .fetch_with_backoff(
-                SourceKind::Zoon,
-                request,
-                &runtime,
-                &control,
-                &progress,
-                &probe_url,
-            )
+            .fetch_guarded(SourceKind::Zoon, &runtime, &control, &probe_url)
             .await?;
         let listing = self.detect_listing(request, &probe_html);
 
@@ -396,30 +372,10 @@ impl DirectoryProvider for ZoonHtmlProvider {
                     retry_after_seconds: None,
                 });
                 let url = self.listing_url(&listing, request, page)?;
-                let html = if page == 1 {
-                    // Category page 1 differs from search probe; fetch it.
-                    self.http
-                        .fetch_with_backoff(
-                            SourceKind::Zoon,
-                            request,
-                            &runtime,
-                            &control,
-                            &progress,
-                            &url,
-                        )
-                        .await?
-                } else {
-                    self.http
-                        .fetch_with_backoff(
-                            SourceKind::Zoon,
-                            request,
-                            &runtime,
-                            &control,
-                            &progress,
-                            &url,
-                        )
-                        .await?
-                };
+                let html = self
+                    .http
+                    .fetch_guarded(SourceKind::Zoon, &runtime, &control, &url)
+                    .await?;
                 let found = self.discover(request, &html);
                 if found.is_empty() {
                     stop_reason = StopReason::EmptyPage;
@@ -440,7 +396,7 @@ impl DirectoryProvider for ZoonHtmlProvider {
                 }
                 let added = candidates.len() > before;
                 let has_next = Self::has_next_page(&listing, &html, page);
-                if !added && !has_next {
+                if !added {
                     stop_reason = StopReason::NoNewCandidates;
                     break;
                 }
@@ -484,7 +440,7 @@ impl RusprofileHtmlProvider {
     }
 
     /// Live check (2026-10-04): `/search?query=` returns HTTP 404 for text and INN.
-    /// Public HTML listings still work for ТН ВЭД/code pages: `/codes/{code}` and `/codes/{code}/{page}`.
+    /// Public HTML listings use ОКВЭД/code pages: `/codes/{code}` and `/codes/{code}/{page}`.
     pub fn search_url(&self, request: &SearchRequest, page: u16) -> Result<Url, AppError> {
         if let Some(code) = normalize_rusprofile_code(request.query.trim()) {
             let path = if page <= 1 {
@@ -533,7 +489,7 @@ fn normalize_rusprofile_code(query: &str) -> Option<String> {
     if Regex::new(r"^\d{4,10}$").ok()?.is_match(trimmed) {
         return Some(trimmed.to_owned());
     }
-    // Common keyword → verified public code listing (ТН ВЭД 45.2 /codes/45200000).
+    // Common keyword → public code listing (ОКВЭД 45.2 /codes/45200000).
     let key = trimmed.to_lowercase().replace('ё', "е");
     match key.as_str() {
         "автосервис" | "автосервисы" | "сто" | "автотехцентр" | "автотехцентры" => {
@@ -654,14 +610,7 @@ where
         let url = search_url(provider, page)?;
         let html = provider
             .http()
-            .fetch_with_backoff(
-                provider.source(),
-                request,
-                &runtime,
-                &control,
-                &progress,
-                &url,
-            )
+            .fetch_guarded(provider.source(), &runtime, &control, &url)
             .await?;
         let found = discover(provider, &html);
         if found.is_empty() {
@@ -683,7 +632,7 @@ where
         }
         let added = candidates.len() > before;
         let next = has_next(&html, page);
-        if !added && !next {
+        if !added {
             stop_reason = StopReason::NoNewCandidates;
             break;
         }
@@ -731,7 +680,7 @@ async fn enrich_candidates<P: PublicCatalog>(
                 let source = provider.source();
                 let html = provider
                     .http()
-                    .fetch_with_backoff(source, &request, &runtime, &control, &progress, &url)
+                    .fetch_guarded(source, &runtime, &control, &url)
                     .await?;
                 let row = parse_public_profile(source, &url, &html)?;
                 (progress)(ScrapeProgress {
@@ -967,6 +916,54 @@ fn push_unique<T: PartialEq>(values: &mut Vec<T>, value: T) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn rate_limit_stops_after_first_response_even_with_retries_enabled()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use std::{
+            io::{Read, Write},
+            net::TcpListener,
+            sync::{
+                Arc,
+                atomic::{AtomicUsize, Ordering},
+            },
+        };
+        let listener = TcpListener::bind("127.0.0.1:0")?;
+        let url = Url::parse(&format!("http://{}/", listener.local_addr()?))?;
+        let calls = Arc::new(AtomicUsize::new(0));
+        let server_calls = calls.clone();
+        let server = std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buffer = [0; 4096];
+                let _ = stream.read(&mut buffer);
+                server_calls.fetch_add(1, Ordering::SeqCst);
+                let _ = stream.write_all(b"HTTP/1.1 429 Too Many Requests\r\nRetry-After: 5\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            }
+        });
+        let request = SearchRequest::default();
+        assert!(request.config_for(SourceKind::Yell).max_retries > 0);
+        let runtime = ProviderRuntime::for_request(
+            ProviderPolicy::conservative(0, 1),
+            &request,
+            SourceKind::Yell,
+        );
+        let control = ProviderControl::new(tokio_util::sync::CancellationToken::new());
+        let http = SafeHttp::new()?;
+        let result = http
+            .fetch_guarded(SourceKind::Yell, &runtime, &control, &url)
+            .await;
+        assert!(matches!(
+            result,
+            Err(AppError {
+                kind: ErrorKind::RateLimited,
+                ..
+            })
+        ));
+        assert!(control.is_cancelled());
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert!(server.join().is_ok());
+        Ok(())
+    }
 
     #[test]
     fn yell_search_url_and_strict_company_links() -> Result<(), Box<dyn std::error::Error>> {
