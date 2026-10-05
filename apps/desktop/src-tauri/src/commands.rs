@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use tauri::{Emitter, Manager, State};
+use tauri::{Emitter, State};
+use tauri_plugin_dialog::DialogExt;
 use tokio_util::sync::CancellationToken;
 use twogis_domain::{
     AppError, CollectionJobInfo, ExportFormat, ExportReceipt, HealthInfo, Organization,
@@ -44,6 +45,22 @@ pub fn two_gis_api_key_saved(state: State<'_, AppState>) -> bool {
         .api_key_state
         .read()
         .is_ok_and(|key| key.as_ref().is_some_and(|value| !value.trim().is_empty()))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn two_gis_categories(
+    state: State<'_, AppState>,
+    region: String,
+    query: String,
+) -> Result<Vec<twogis_domain::CategorySuggestion>, AppError> {
+    if query.trim().len() < 2 {
+        return Ok(Vec::new());
+    }
+    state
+        .two_gis_provider
+        .search_categories(&region, &query)
+        .await
 }
 
 #[tauri::command]
@@ -192,28 +209,46 @@ pub async fn export_results(
     state: State<'_, AppState>,
     run_id: String,
     format: ExportFormat,
-) -> Result<ExportReceipt, AppError> {
-    let dir = app
-        .path()
-        .download_dir()
-        .map_err(|e| AppError::export(format!("failed to resolve Downloads directory: {e}")))?;
+) -> Result<Option<ExportReceipt>, AppError> {
     let extension = match format {
         ExportFormat::Csv => "csv",
-        ExportFormat::Json => "json",
         ExportFormat::Xlsx => "xlsx",
     };
     let filename = format!(
-        "lead-export-{}.{}",
+        "phone-list-{}.{}",
         Utc::now().format("%Y%m%d-%H%M%S"),
         extension
     );
-    let path = dir.join(filename);
-    let rows = state.service.export_run(&path, format, &run_id).await?;
-    Ok(ExportReceipt {
+    let filter_name = match format {
+        ExportFormat::Csv => "CSV",
+        ExportFormat::Xlsx => "Excel",
+    };
+    let dialog = app
+        .dialog()
+        .file()
+        .set_title("Сохранить выгрузку")
+        .set_file_name(filename)
+        .add_filter(filter_name, &[extension]);
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    dialog.save_file(move |path| {
+        let _ = sender.send(path);
+    });
+    let Some(path) = receiver
+        .await
+        .map_err(|_| AppError::export("Диалог сохранения закрыт"))?
+    else {
+        return Ok(None);
+    };
+    let mut path = path
+        .into_path()
+        .map_err(|error| AppError::export(format!("Не удалось открыть выбранный путь: {error}")))?;
+    path.set_extension(extension);
+    let exported = state.service.export_run(&path, format, &run_id).await?;
+    Ok(Some(ExportReceipt {
         path: path.to_string_lossy().into_owned(),
-        rows,
+        rows: exported,
         format,
-    })
+    }))
 }
 
 #[tauri::command]

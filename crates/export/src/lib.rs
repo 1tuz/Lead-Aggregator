@@ -1,88 +1,65 @@
-use std::{fs::File, io::BufWriter, path::Path};
+use std::{collections::HashSet, path::Path};
 
 use rust_xlsxwriter::Workbook;
 use twogis_domain::{AppError, ExportFormat, Organization};
 
-pub fn export(path: &Path, format: ExportFormat, rows: &[Organization]) -> Result<(), AppError> {
+pub fn export(path: &Path, format: ExportFormat, rows: &[Organization]) -> Result<u32, AppError> {
     match format {
-        ExportFormat::Csv => export_csv(path, rows),
-        ExportFormat::Json => export_json(path, rows),
-        ExportFormat::Xlsx => export_xlsx(path, rows),
+        ExportFormat::Csv => export_phone_csv(path, rows)?,
+        ExportFormat::Xlsx => export_phone_xlsx(path, rows)?,
     }
+    Ok(clean_phone_list(rows).len() as u32)
 }
 
-fn source_labels(row: &Organization) -> String {
-    row.sources
-        .iter()
-        .map(|source| source.source.label())
-        .collect::<Vec<_>>()
-        .join(" | ")
+fn clean_phone_list(rows: &[Organization]) -> Vec<String> {
+    let mut seen = HashSet::new();
+    rows.iter()
+        .flat_map(|row| &row.phones)
+        .filter_map(|phone| normalize_phone(phone))
+        .filter(|phone| !is_excluded_phone(phone))
+        .filter(|phone| seen.insert(phone.clone()))
+        .collect()
 }
 
-fn export_csv(path: &Path, rows: &[Organization]) -> Result<(), AppError> {
-    let mut writer = csv::Writer::from_path(path)
+fn normalize_phone(value: &str) -> Option<String> {
+    let mut digits = value
+        .chars()
+        .filter(char::is_ascii_digit)
+        .collect::<String>();
+    if digits.len() == 11 && digits.starts_with('8') {
+        digits.replace_range(0..1, "7");
+    } else if digits.len() == 10 {
+        digits.insert(0, '7');
+    }
+    (digits.len() >= 10).then(|| format!("+{digits}"))
+}
+
+fn is_excluded_phone(phone: &str) -> bool {
+    let digits = phone.strip_prefix('+').unwrap_or(phone);
+    let national = if digits.len() == 11 && digits.starts_with('7') {
+        &digits[1..]
+    } else {
+        digits
+    };
+    if national.len() < 3 {
+        return false;
+    }
+    let code = &national[..3];
+    if code == "800" || code == "900" {
+        return true;
+    }
+    let code = code.parse::<u16>().ok();
+    code.is_some_and(|code| (910..=919).contains(&code) || (980..=989).contains(&code))
+}
+
+fn export_phone_csv(path: &Path, rows: &[Organization]) -> Result<(), AppError> {
+    let mut writer = csv::WriterBuilder::new()
+        .has_headers(false)
+        .from_path(path)
         .map_err(|e| AppError::export(format!("failed to create CSV: {e}")))?;
-    writer
-        .write_record([
-            "id",
-            "name",
-            "category",
-            "address",
-            "rating",
-            "review_count",
-            "phones",
-            "email",
-            "website",
-            "socials",
-            "inn",
-            "ogrn",
-            "sources",
-            "tags",
-            "merged_records",
-            "possible_duplicate",
-            "opening_status",
-            "latitude",
-            "longitude",
-            "source_url",
-            "collected_at",
-        ])
-        .map_err(|e| AppError::export(e.to_string()))?;
-
-    for row in rows {
-        let rating = row.rating.map(|v| v.to_string()).unwrap_or_default();
-        let reviews = row.review_count.map(|v| v.to_string()).unwrap_or_default();
-        let phones = row.phones.join(" | ");
-        let socials = row.socials.join(" | ");
-        let sources = source_labels(row);
-        let tags = row.tags.join(" | ");
-        let merged = row.dedupe.merged_records.to_string();
-        let possible = row.dedupe.possible_duplicate.to_string();
-        let latitude = row.latitude.map(|v| v.to_string()).unwrap_or_default();
-        let longitude = row.longitude.map(|v| v.to_string()).unwrap_or_default();
+    for phone in clean_phone_list(rows) {
         writer
-            .write_record([
-                row.id.as_str(),
-                row.name.as_str(),
-                row.category.as_deref().unwrap_or_default(),
-                row.address.as_deref().unwrap_or_default(),
-                rating.as_str(),
-                reviews.as_str(),
-                phones.as_str(),
-                row.email.as_deref().unwrap_or_default(),
-                row.website.as_deref().unwrap_or_default(),
-                socials.as_str(),
-                row.inn.as_deref().unwrap_or_default(),
-                row.ogrn.as_deref().unwrap_or_default(),
-                sources.as_str(),
-                tags.as_str(),
-                merged.as_str(),
-                possible.as_str(),
-                row.opening_status.as_deref().unwrap_or_default(),
-                latitude.as_str(),
-                longitude.as_str(),
-                row.source_url.as_str(),
-                row.collected_at.as_str(),
-            ])
+            .write_record([phone])
             .map_err(|e| AppError::export(e.to_string()))?;
     }
     writer
@@ -90,77 +67,40 @@ fn export_csv(path: &Path, rows: &[Organization]) -> Result<(), AppError> {
         .map_err(|e| AppError::export(format!("failed to flush CSV: {e}")))
 }
 
-fn export_json(path: &Path, rows: &[Organization]) -> Result<(), AppError> {
-    let file =
-        File::create(path).map_err(|e| AppError::export(format!("failed to create JSON: {e}")))?;
-    serde_json::to_writer_pretty(BufWriter::new(file), rows)
-        .map_err(|e| AppError::export(format!("failed to write JSON: {e}")))
-}
-
-fn export_xlsx(path: &Path, rows: &[Organization]) -> Result<(), AppError> {
+fn export_phone_xlsx(path: &Path, rows: &[Organization]) -> Result<(), AppError> {
     let mut workbook = Workbook::new();
     let sheet = workbook.add_worksheet();
-    let headers = [
-        "ID",
-        "Name",
-        "Category",
-        "Address",
-        "Rating",
-        "Reviews",
-        "Phones",
-        "Email",
-        "Website",
-        "Socials",
-        "INN",
-        "OGRN",
-        "Sources",
-        "Tags",
-        "Merged",
-        "Possible duplicate",
-        "Status",
-        "Latitude",
-        "Longitude",
-        "2GIS URL",
-        "Collected at",
-    ];
-    for (column, header) in headers.iter().enumerate() {
+    for (index, phone) in clean_phone_list(rows).iter().enumerate() {
         sheet
-            .write_string(0, column as u16, *header)
+            .write_string(index as u32, 0, phone)
             .map_err(|e| AppError::export(e.to_string()))?;
-    }
-    for (index, row) in rows.iter().enumerate() {
-        let r = index as u32 + 1;
-        let cells = [
-            row.id.clone(),
-            row.name.clone(),
-            row.category.clone().unwrap_or_default(),
-            row.address.clone().unwrap_or_default(),
-            row.rating.map(|v| v.to_string()).unwrap_or_default(),
-            row.review_count.map(|v| v.to_string()).unwrap_or_default(),
-            row.phones.join(" | "),
-            row.email.clone().unwrap_or_default(),
-            row.website.clone().unwrap_or_default(),
-            row.socials.join(" | "),
-            row.inn.clone().unwrap_or_default(),
-            row.ogrn.clone().unwrap_or_default(),
-            source_labels(row),
-            row.tags.join(" | "),
-            row.dedupe.merged_records.to_string(),
-            row.dedupe.possible_duplicate.to_string(),
-            row.opening_status.clone().unwrap_or_default(),
-            row.latitude.map(|v| v.to_string()).unwrap_or_default(),
-            row.longitude.map(|v| v.to_string()).unwrap_or_default(),
-            row.source_url.clone(),
-            row.collected_at.clone(),
-        ];
-        for (column, value) in cells.iter().enumerate() {
-            sheet
-                .write_string(r, column as u16, value)
-                .map_err(|e| AppError::export(e.to_string()))?;
-        }
     }
     sheet.autofit();
     workbook
         .save(path)
         .map_err(|e| AppError::export(format!("failed to save XLSX: {e}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row(phones: &[&str]) -> Organization {
+        Organization {
+            phones: phones.iter().map(|phone| (*phone).to_owned()).collect(),
+            ..Organization::default()
+        }
+    }
+
+    #[test]
+    fn phone_list_normalizes_deduplicates_and_filters_requested_codes() {
+        let rows = vec![
+            row(&["8 (999) 123-45-67", "+7 999 123 45 67", "8-800-555-35-35"]),
+            row(&["8 900 123-45-67", "+7 916 123-45-67", "+7 921 123-45-67"]),
+        ];
+        assert_eq!(
+            clean_phone_list(&rows),
+            vec!["+79991234567", "+79211234567"]
+        );
+    }
 }

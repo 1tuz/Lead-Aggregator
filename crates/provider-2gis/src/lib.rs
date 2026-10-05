@@ -4,11 +4,13 @@ mod parse;
 use std::{
     collections::HashSet,
     sync::{Arc, RwLock},
+    time::Duration,
 };
 
 use async_trait::async_trait;
 use futures::{StreamExt, stream};
 use scraper::{Html, Selector};
+use tokio::time::Instant;
 use twogis_domain::{
     AppError, ErrorKind, ProgressPhase, ProviderRunState, ScrapeProgress, SearchRequest, SourceKind,
 };
@@ -23,6 +25,7 @@ pub struct TwoGisHtmlProvider {
     http: CatalogHttpClient,
     base: Url,
     api_key: Arc<RwLock<Option<String>>>,
+    api_next_request: Arc<tokio::sync::Mutex<Option<Instant>>>,
 }
 
 impl TwoGisHtmlProvider {
@@ -34,12 +37,47 @@ impl TwoGisHtmlProvider {
             http,
             base,
             api_key: Arc::new(RwLock::new(None)),
+            api_next_request: Arc::new(tokio::sync::Mutex::new(None)),
         })
     }
 
     pub fn with_api_key_state(mut self, api_key: Arc<RwLock<Option<String>>>) -> Self {
         self.api_key = api_key;
         self
+    }
+
+    async fn wait_for_api_slot(&self, control: &ProviderControl) -> Result<(), AppError> {
+        let mut next = self.api_next_request.lock().await;
+        if let Some(deadline) = *next {
+            let now = Instant::now();
+            if deadline > now {
+                control.sleep(deadline - now).await?;
+            }
+        }
+        *next = Some(Instant::now() + Duration::from_millis(250));
+        Ok(())
+    }
+
+    async fn defer_api_requests(&self, seconds: u64) {
+        let mut next = self.api_next_request.lock().await;
+        let retry_deadline = Instant::now() + Duration::from_secs(seconds);
+        if next.is_none_or(|deadline| deadline < retry_deadline) {
+            *next = Some(retry_deadline);
+        }
+    }
+
+    pub async fn search_categories(
+        &self,
+        region: &str,
+        query: &str,
+    ) -> Result<Vec<twogis_domain::CategorySuggestion>, AppError> {
+        let key = self
+            .api_key
+            .read()
+            .map_err(|_| AppError::storage("Состояние ключа 2ГИС недоступно"))?
+            .clone()
+            .ok_or_else(|| AppError::validation("Сначала сохраните API-ключ 2ГИС в настройках"))?;
+        api::search_categories(self, &key, region, query).await
     }
 
     pub fn search_url(&self, request: &SearchRequest, page: u16) -> Result<Url, AppError> {
@@ -193,7 +231,16 @@ impl DirectoryProvider for TwoGisHtmlProvider {
     }
 
     fn policy(&self) -> ProviderPolicy {
-        ProviderPolicy::conservative(2_000, 1)
+        let min_delay = if self
+            .api_key
+            .read()
+            .is_ok_and(|key| key.as_ref().is_some_and(|value| !value.trim().is_empty()))
+        {
+            250
+        } else {
+            1_500
+        };
+        ProviderPolicy::conservative(min_delay, 1)
     }
 
     async fn search(
@@ -387,13 +434,16 @@ mod tests {
         let result = TwoGisHtmlProvider::new()?
             .fetch_controlled(&runtime, &control, &url)
             .await;
-        assert!(matches!(
-            result,
-            Err(AppError {
-                kind: ErrorKind::RateLimited,
-                ..
-            })
-        ));
+        assert!(
+            matches!(
+                result,
+                Err(AppError {
+                    kind: ErrorKind::RateLimited,
+                    ..
+                })
+            ),
+            "expected HTTP 429 classification, got {result:?}"
+        );
         assert!(control.is_cancelled());
         assert!(server.join().is_ok());
         Ok(())

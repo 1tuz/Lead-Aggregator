@@ -43,6 +43,8 @@ fn default_sources() -> Vec<SourceKind> {
 pub struct SearchRequest {
     pub region: String,
     pub query: String,
+    #[serde(default)]
+    pub category: Option<String>,
     pub max_results: u32,
     pub max_pages: u16,
     pub concurrency: u8,
@@ -60,6 +62,7 @@ impl Default for SearchRequest {
         Self {
             region: "moscow".into(),
             query: "автосервис".into(),
+            category: None,
             max_results: 100,
             max_pages: 5,
             concurrency: 1,
@@ -69,6 +72,13 @@ impl Default for SearchRequest {
             provider_configs: Vec::new(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CategorySuggestion {
+    pub id: String,
+    pub name: String,
 }
 
 impl SearchRequest {
@@ -297,8 +307,20 @@ pub enum ProgressPhase {
 #[serde(rename_all = "camelCase")]
 pub enum ExportFormat {
     Csv,
-    Json,
     Xlsx,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum ExportColumn {
+    Company,
+    Category,
+    Sources,
+    Address,
+    Phone,
+    Inn,
+    Website,
+    Tags,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Lead Aggregator",
-  "version": "0.4.6",
+  "version": "0.4.7",
   "identifier": "dev.local.lead-aggregator",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -29,6 +29,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "icon": ["icons/icon.png", "icons/icon.icns", "icons/icon.ico"],
     "targets": ["app", "dmg"],
     "category": "Utility",
@@ -36,6 +37,17 @@
     "longDescription": "A lightweight cross-platform desktop app that aggregates public business directory data, preserves source provenance, deduplicates leads, stores them in SQLite, and exports CSV/XLSX/JSON without bundling Chromium.",
     "macOS": {
       "minimumSystemVersion": "13.0"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY0QTM2Njc4M0ZGMkU3MTkKUldRWjUvSS9lR2FqOUEvb3B5SDJUSFRNbmxqbTNnWUhueFBrWHhUa2hsanFYYU1QNjNoUmtwTUkK",
+      "endpoints": [
+        "https://github.com/1tuz/Lead-Aggregator/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

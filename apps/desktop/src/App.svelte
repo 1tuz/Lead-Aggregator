@@ -2,16 +2,18 @@
   import { listen } from '@tauri-apps/api/event';
   import { CircleStop, Database, Download, Moon, PanelLeft, Play, Sun } from 'lucide-svelte';
   import { onMount } from 'svelte';
-  import { api, errorMessage, type CollectionJobInfo, type ExportFormat, type HealthInfo, type Organization, type ProviderSearchConfig, type ProviderStatus, type ScrapeProgress, type SearchRunInfo, type SourceKind } from './lib/ipc';
+  import { api, errorMessage, type CollectionJobInfo, type ExportColumn, type ExportFormat, type HealthInfo, type Organization, type ProviderSearchConfig, type ProviderStatus, type ScrapeProgress, type SearchRunInfo, type SourceKind } from './lib/ipc';
   import { citySlug, normalizePlaceName, regionCityCount, russianCities, russianRegions, type RussianCity } from './lib/geography';
   import LeadTable from './lib/components/LeadTable.svelte';
   import ProviderControls from './lib/components/ProviderControls.svelte';
   import ProviderStatusPanel from './lib/components/ProviderStatusPanel.svelte';
   import TwoGisApiKeySettings from './lib/components/TwoGisApiKeySettings.svelte';
+  import AppUpdaterSettings from './lib/components/AppUpdaterSettings.svelte';
 
   const allSources: SourceKind[] = ['twoGis', 'yell', 'zoon', 'rusprofile'];
+  const defaultColumnOrder: ExportColumn[] = ['company', 'category', 'sources', 'address', 'phone', 'inn', 'website', 'tags'];
   const initialProviderConfigs: ProviderSearchConfig[] = [
-    { source: 'twoGis', enabled: true, maxResults: 2000, maxPages: 50, concurrency: 1, requestDelayMs: 2000, preset: 'gentle', maxRetries: 2, backoffBaseSeconds: 60 },
+    { source: 'twoGis', enabled: true, maxResults: 500, maxPages: 50, concurrency: 1, requestDelayMs: 250, preset: 'gentle', maxRetries: 2, backoffBaseSeconds: 60 },
     { source: 'yell', enabled: false, maxResults: 1500, maxPages: 50, concurrency: 1, requestDelayMs: 2500, preset: 'gentle', maxRetries: 2, backoffBaseSeconds: 90 },
     { source: 'zoon', enabled: false, maxResults: 1000, maxPages: 40, concurrency: 1, requestDelayMs: 3500, preset: 'gentle', maxRetries: 2, backoffBaseSeconds: 120 },
     { source: 'rusprofile', enabled: false, maxResults: 1000, maxPages: 50, concurrency: 1, requestDelayMs: 5000, preset: 'gentle', maxRetries: 2, backoffBaseSeconds: 180 },
@@ -46,6 +48,12 @@
   let theme: 'frost' | 'graphite' = 'frost';
   let sidebarCollapsed = false;
   let twoGisApiKeySaved = false;
+  let columnOrder: ExportColumn[] = defaultColumnOrder;
+  let categorySuggestions: { id: string; name: string }[] = [];
+  let selectedCategory: string | null = null;
+  let categoryError = '';
+  let categoryLoading = false;
+  let categoryTimer = 0;
 
   $: normalizedLocation = normalizePlaceName(locationText);
   $: matchingRegions = regionFilter
@@ -90,6 +98,13 @@
   }
 
   onMount(() => {
+    try {
+      const savedOrder = JSON.parse(localStorage.getItem('lead-column-order') ?? 'null') as unknown;
+      if (Array.isArray(savedOrder) && savedOrder.length === defaultColumnOrder.length && savedOrder.every((column) => defaultColumnOrder.includes(column))) {
+        columnOrder = [...new Set(savedOrder)] as ExportColumn[];
+        if (columnOrder.length !== defaultColumnOrder.length) columnOrder = defaultColumnOrder;
+      }
+    } catch { columnOrder = defaultColumnOrder; }
     const storedTheme = localStorage.getItem('theme');
     if (storedTheme === 'graphite') theme = 'graphite';
     applyTheme();
@@ -203,6 +218,7 @@
       requestDelayMs: Math.max(250, Math.min(...active.map((config) => config.requestDelayMs))),
       sources: active.map((config) => config.source),
       providerConfigs,
+      category: selectedCategory,
     };
   }
 
@@ -265,10 +281,35 @@
     await loadRun(currentRunId, Math.max(0, offset));
   }
   async function cancelSearch() { await api.cancelSearch(); message = 'Остановка…'; }
+  function saveColumnOrder(order: ExportColumn[]) {
+    columnOrder = order;
+    localStorage.setItem('lead-column-order', JSON.stringify(order));
+  }
+  async function suggestCategories(value: string) {
+    window.clearTimeout(categoryTimer);
+    selectedCategory = null;
+    if (value.trim().length < 2 || !targetRegions[0]) { categorySuggestions = []; return; }
+    categoryTimer = window.setTimeout(async () => {
+      categoryLoading = true;
+      categoryError = '';
+      try { categorySuggestions = await api.twoGisCategories(targetRegions[0], value.trim()); }
+      catch (cause) { categorySuggestions = []; categoryError = errorMessage(cause); }
+      finally { categoryLoading = false; }
+    }, 350);
+  }
+  function chooseCategory(category: { id: string; name: string }) {
+    selectedCategory = category.name;
+    query = category.name;
+    categorySuggestions = [];
+    categoryError = '';
+  }
   async function exportRows(format: ExportFormat) {
     error = '';
     if (!currentRunId) { error = 'Сначала выбери или выполни поиск'; return; }
-    try { const receipt = await api.exportResults(currentRunId, format); message = `Экспортировано ${receipt.rows.toLocaleString()}: ${receipt.path}`; }
+    try {
+      const receipt = await api.exportResults(currentRunId, format);
+      if (receipt) message = `Сохранено ${receipt.rows.toLocaleString()}: ${receipt.path}`;
+    }
     catch (e) { error = errorMessage(e); }
   }
 </script>
@@ -334,9 +375,25 @@
         {:else if regionFilter}<small class="selected-location">{regionFilter} · весь регион · {targetRegions.length} городов</small>
         {:else if allRegionsMode}<small class="selected-location">Вся Россия · {targetRegions.length} городов</small>{/if}
       </div>
-      <label><span>Что искать</span><input bind:value={query} placeholder="автосервис" disabled={running} /></label>
+      <div class="location-field">
+        <label for="query-search"><span>Категория или запрос</span></label>
+        <div class="location-picker">
+          <input id="query-search" value={query} placeholder="Начните вводить категорию 2ГИС" disabled={running} oninput={(event) => { query = event.currentTarget.value; void suggestCategories(query); }} />
+          {#if categorySuggestions.length > 0}
+            <div class="location-suggestions" role="listbox" aria-label="Категории 2ГИС">
+              {#each categorySuggestions as category (category.id)}
+                <button type="button" role="option" aria-selected="false" class="location-option" onclick={() => chooseCategory(category)}><strong>{category.name}</strong></button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+        {#if selectedCategory}<small class="selected-location">Категория 2ГИС · точный поиск по рубрике</small>
+        {:else if categoryLoading}<small class="selected-location">Ищу рубрики 2ГИС…</small>
+        {:else if categoryError}<small class="selected-location">Подсказки 2ГИС: {categoryError}</small>
+        {:else}<small class="selected-location">Выберите рубрику из списка или оставьте свободный запрос</small>{/if}
+      </div>
 
-      <details class="settings-disclosure">
+      <details class="settings-disclosure" open>
         <summary>Настройки источников</summary>
         <div class="settings-content">
           <TwoGisApiKeySettings
@@ -345,6 +402,7 @@
             onSave={saveTwoGisApiKey}
             onDelete={deleteTwoGisApiKey}
           />
+          <AppUpdaterSettings currentVersion={health?.appVersion} />
           <ProviderControls
             configs={providerConfigs}
             {running}
@@ -387,9 +445,8 @@
             {/each}
           </select>
         {/if}
-        <button onclick={() => exportRows('csv')} disabled={totalRows === 0 || running || !currentRunId}><Download size={15} /> CSV</button>
-        <button onclick={() => exportRows('xlsx')} disabled={totalRows === 0 || running || !currentRunId}><Download size={15} /> XLSX</button>
-        <button onclick={() => exportRows('json')} disabled={totalRows === 0 || running || !currentRunId}><Download size={15} /> JSON</button>
+        <button onclick={() => exportRows('csv')} disabled={totalRows === 0 || running || !currentRunId}><Download size={15} /> CSV…</button>
+        <button onclick={() => exportRows('xlsx')} disabled={totalRows === 0 || running || !currentRunId}><Download size={15} /> XLSX…</button>
       </div>
     </header>
 
@@ -421,7 +478,7 @@
       <div><strong>{duplicatesMerged}</strong><span>объединено</span></div>
     </section>
 
-    <LeadTable {rows} />
+    <LeadTable {rows} {columnOrder} onColumnOrderChange={saveColumnOrder} />
     {#if totalRows > pageSize}
       <div class="pager">
         <button disabled={pageOffset === 0 || running} onclick={() => void loadPage(pageOffset - pageSize)}>Назад</button>

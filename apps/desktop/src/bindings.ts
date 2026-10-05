@@ -14,11 +14,18 @@ export const commands = {
 	recentCollectionJobs: (limit: number) => typedError<CollectionJobInfo[], AppError>(__TAURI_INVOKE("recent_collection_jobs", { limit })),
 	resultsForRun: (runId: string, limit: number) => typedError<Organization[], AppError>(__TAURI_INVOKE("results_for_run", { runId, limit })),
 	resultsForRunPage: (runId: string, offset: number, limit: number) => typedError<RunResultsPage, AppError>(__TAURI_INVOKE("results_for_run_page", { runId, offset, limit })),
-	exportResults: (runId: string, format: ExportFormat) => typedError<ExportReceipt, AppError>(__TAURI_INVOKE("export_results", { runId, format })),
+	exportResults: (runId: string, format: ExportFormat) => typedError<{
+	path: string,
+	rows: number,
+	format: ExportFormat,
+} | null, AppError>(__TAURI_INVOKE("export_results", { runId, format })),
 	health: () => __TAURI_INVOKE<HealthInfo>("health"),
 	save2gisApiKey: (key: string) => typedError<boolean, AppError>(__TAURI_INVOKE("save_2gis_api_key", { key })),
 	delete2gisApiKey: () => typedError<boolean, AppError>(__TAURI_INVOKE("delete_2gis_api_key")),
 	twoGisApiKeySaved: () => __TAURI_INVOKE<boolean>("two_gis_api_key_saved"),
+	twoGisCategories: (region: string, query: string) => typedError<CategorySuggestion[], AppError>(__TAURI_INVOKE("two_gis_categories", { region, query })),
+	checkForUpdates: () => typedError<UpdateInfo, AppError>(__TAURI_INVOKE("check_for_updates")),
+	installUpdate: () => typedError<boolean, AppError>(__TAURI_INVOKE("install_update")),
 };
 
 /* Types */
@@ -28,6 +35,11 @@ export type AppError = {
 	retryable: boolean,
 	retryAfterSeconds?: number | null,
 	diagnostics?: ResponseDiagnostics | null,
+};
+
+export type CategorySuggestion = {
+	id: string,
+	name: string,
 };
 
 export type CollectionJobInfo = {
@@ -53,7 +65,7 @@ export type DedupeInfo = {
 
 export type ErrorKind = "validation" | "network" | "rateLimited" | "blocked" | "captchaRequired" | "challengeRequired" | "parse" | "storage" | "export" | "cancelled" | "internal";
 
-export type ExportFormat = "csv" | "json" | "xlsx";
+export type ExportFormat = "csv" | "xlsx";
 
 export type ExportReceipt = {
 	path: string,
@@ -143,6 +155,7 @@ export type RunSummary = {
 export type SearchRequest = {
 	region: string,
 	query: string,
+	category?: string | null,
 	maxResults: number,
 	maxPages: number,
 	concurrency: number,
@@ -171,6 +184,12 @@ export type SourceAttribution = {
 };
 
 export type SourceKind = "twoGis" | "yell" | "zoon" | "rusprofile";
+
+export type UpdateInfo = {
+	currentVersion: string,
+	version: string | null,
+	notes: string | null,
+};
 
 /* Tauri Specta runtime */
 async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {

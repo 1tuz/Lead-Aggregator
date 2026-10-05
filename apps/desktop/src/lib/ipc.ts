@@ -15,6 +15,8 @@ import {
   type SourceKind,
 } from '../bindings';
 
+export type ExportColumn = 'company' | 'category' | 'sources' | 'address' | 'phone' | 'inn' | 'website' | 'tags';
+
 export type {
   AppError,
   CollectionJobInfo,
@@ -76,6 +78,9 @@ export const api = {
     unwrap(await commands.resultsForRunPage(runId, offset, limit)),
   exportResults: async (runId: string, format: ExportFormat) =>
     unwrap(await commands.exportResults(runId, format)),
+  twoGisCategories: async (region: string, query: string) => unwrap(await commands.twoGisCategories(region, query)),
+  checkForUpdates: async () => unwrap(await commands.checkForUpdates()),
+  installUpdate: async () => unwrap(await commands.installUpdate()),
   health: () => commands.health(),
   save2gisApiKey: async (key: string) => unwrap(await commands.save2gisApiKey(key)),
   delete2gisApiKey: async () => unwrap(await commands.delete2gisApiKey()),

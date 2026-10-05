@@ -1,6 +1,7 @@
 mod commands;
 mod credentials;
 mod state;
+mod updater;
 
 use std::{fs, path::Path, sync::Arc};
 
@@ -20,8 +21,10 @@ use crate::{
         cancel_search, delete_2gis_api_key, export_results, health, pause_provider,
         recent_collection_jobs, recent_results, recent_runs, results_for_run, results_for_run_page,
         resume_provider, resume_search, save_2gis_api_key, start_search, two_gis_api_key_saved,
+        two_gis_categories,
     },
     state::AppState,
+    updater::{check_for_updates, install_update},
 };
 
 fn specta_builder() -> Builder<Wry> {
@@ -40,7 +43,10 @@ fn specta_builder() -> Builder<Wry> {
         health,
         save_2gis_api_key,
         delete_2gis_api_key,
-        two_gis_api_key_saved
+        two_gis_api_key_saved,
+        two_gis_categories,
+        check_for_updates,
+        install_update
     ])
 }
 
@@ -52,6 +58,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     builder.export(Typescript::default(), "../src/bindings.ts")?;
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
             builder.mount_events(app);
@@ -64,12 +72,13 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             let api_key = credentials::load_2gis_api_key().unwrap_or_default();
             let api_key_state = Arc::new(std::sync::RwLock::new(api_key));
 
+            let two_gis_provider = Arc::new(
+                TwoGisHtmlProvider::new()
+                    .map_err(as_setup_error)?
+                    .with_api_key_state(api_key_state.clone()),
+            );
             let providers: Vec<Arc<dyn DirectoryProvider>> = vec![
-                Arc::new(
-                    TwoGisHtmlProvider::new()
-                        .map_err(as_setup_error)?
-                        .with_api_key_state(api_key_state.clone()),
-                ),
+                two_gis_provider.clone(),
                 Arc::new(YellHtmlProvider::new().map_err(as_setup_error)?),
                 Arc::new(ZoonHtmlProvider::new().map_err(as_setup_error)?),
                 Arc::new(RusprofileHtmlProvider::new().map_err(as_setup_error)?),
@@ -80,6 +89,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             app.manage(AppState {
                 app: handle,
                 service,
+                two_gis_provider,
                 cancellation: tokio::sync::Mutex::new(None),
                 api_key_state,
             });

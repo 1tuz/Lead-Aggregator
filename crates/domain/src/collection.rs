@@ -35,8 +35,10 @@ impl ProviderSearchConfig {
     pub fn recommended(source: SourceKind, preset: CollectionPreset) -> Self {
         // Gentle = default safe smoke. Normal = larger jobs, still clamped by ProviderPolicy.
         let (delay, concurrency, results, pages, retries, backoff) = match (source, preset) {
-            (SourceKind::TwoGis, CollectionPreset::Gentle) => (2_000, 1, 2_000, 50, 2, 60),
-            (SourceKind::TwoGis, _) => (1_500, 1, 10_000, 500, 1, 45),
+            // Official 2GIS search APIs allow 600 requests/minute. Keep a
+            // margin for category/region lookups and other app activity.
+            (SourceKind::TwoGis, CollectionPreset::Gentle) => (250, 1, 500, 50, 2, 60),
+            (SourceKind::TwoGis, _) => (250, 1, 1_000, 100, 1, 45),
             (SourceKind::Yell, CollectionPreset::Gentle) => (2_500, 1, 1_500, 50, 2, 90),
             (SourceKind::Yell, _) => (2_000, 1, 7_500, 500, 1, 60),
             (SourceKind::Zoon, CollectionPreset::Gentle) => (3_500, 1, 1_000, 40, 2, 120),

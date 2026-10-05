@@ -4,10 +4,12 @@ use tauri::AppHandle;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use twogis_application::ApplicationService;
+use twogis_provider::TwoGisHtmlProvider;
 
 pub struct AppState {
     pub app: AppHandle,
     pub service: Arc<ApplicationService>,
+    pub two_gis_provider: Arc<TwoGisHtmlProvider>,
     pub cancellation: Mutex<Option<CancellationToken>>,
     pub api_key_state: Arc<RwLock<Option<String>>>,
 }

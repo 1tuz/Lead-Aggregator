@@ -254,9 +254,13 @@ impl ApplicationService {
                             if err.diagnostics.as_ref().and_then(|value| value.http_status)
                                 == Some(404)
                             {
-                                let delay = request.config_for(source).request_delay_ms
+                                let delay = request
+                                    .config_for(source)
+                                    .request_delay_ms
                                     .max(provider.policy().min_delay_ms);
-                                control.sleep(Duration::from_millis(u64::from(delay))).await?;
+                                control
+                                    .sleep(Duration::from_millis(u64::from(delay)))
+                                    .await?;
                                 continue;
                             }
                             // A blocked/rate-limited source stops here; other sources continue.

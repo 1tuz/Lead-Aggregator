@@ -77,7 +77,7 @@
     {/if}
   </div>
   <div class="footer-row">
-    <small>Запросы идут напрямую в API 2ГИС. Пауза — 2 сек. · до 30 запросов/мин.</small>
+    <small>Официальный API 2ГИС · пауза 250 мс · до 240 запросов/мин с запасом к лимиту 600/мин.</small>
     <button class="save-button" type="button" onclick={save} disabled={disabled || busy || !key.trim()}>
       {#if busy}<LoaderCircle class="spin" size={13} />{:else}Сохранить{/if}
     </button>

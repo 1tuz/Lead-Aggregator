@@ -90,7 +90,6 @@ impl ApplicationService {
         run_id: &str,
     ) -> Result<u32, AppError> {
         let rows = self.store.all_results_for_run(run_id).await?;
-        twogis_export::export(path, format, &rows)?;
-        Ok(rows.len() as u32)
+        twogis_export::export(path, format, &rows)
     }
 }

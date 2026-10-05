@@ -21,7 +21,7 @@
   };
 
   const safeMinimums: Record<SourceKind, { delay: number; concurrency: number }> = {
-    twoGis: { delay: 2000, concurrency: 1 },
+    twoGis: { delay: 250, concurrency: 1 },
     yell: { delay: 2000, concurrency: 1 },
     zoon: { delay: 3000, concurrency: 1 },
     rusprofile: { delay: 4500, concurrency: 1 },
@@ -30,8 +30,8 @@
   function recommended(source: SourceKind, preset: Exclude<CollectionPreset, 'custom'>): ProviderSearchConfig {
     const table: Record<SourceKind, Record<'gentle' | 'normal', Omit<ProviderSearchConfig, 'source' | 'enabled' | 'preset'>>> = {
       twoGis: {
-        gentle: { maxResults: 2000, maxPages: 50, concurrency: 1, requestDelayMs: 2000, maxRetries: 2, backoffBaseSeconds: 60 },
-        normal: { maxResults: 10000, maxPages: 500, concurrency: 1, requestDelayMs: 1500, maxRetries: 1, backoffBaseSeconds: 45 },
+        gentle: { maxResults: 500, maxPages: 50, concurrency: 1, requestDelayMs: 250, maxRetries: 2, backoffBaseSeconds: 60 },
+        normal: { maxResults: 1000, maxPages: 100, concurrency: 1, requestDelayMs: 250, maxRetries: 1, backoffBaseSeconds: 45 },
       },
       yell: {
         gentle: { maxResults: 1500, maxPages: 50, concurrency: 1, requestDelayMs: 2500, maxRetries: 2, backoffBaseSeconds: 90 },
@@ -96,7 +96,7 @@
           </select>
         </label>
         <label><span>Лимит</span><input type="number" min="1" max="50000" value={config.maxResults} disabled={running} onchange={(event) => patch(config.source, { maxResults: Number(event.currentTarget.value) })} /></label>
-        <label><span>Страниц</span><input type="number" min="1" max="5000" value={config.maxPages} disabled={running} onchange={(event) => patch(config.source, { maxPages: Number(event.currentTarget.value) })} /></label>
+        <label><span>{config.source === 'twoGis' ? 'Запросов API' : 'Страниц'}</span><input type="number" min="1" max={config.source === 'twoGis' ? 100 : 5000} value={config.maxPages} disabled={running} onchange={(event) => patch(config.source, { maxPages: Number(event.currentTarget.value) })} /></label>
         <label><span>Пауза, мс</span><input type="number" min="250" step="50" value={config.requestDelayMs} disabled={running} onchange={(event) => patch(config.source, { requestDelayMs: Number(event.currentTarget.value) })} /></label>
         <label><span>Параллельно</span><input type="number" min="1" max="8" value={config.concurrency} disabled={running} onchange={(event) => patch(config.source, { concurrency: Number(event.currentTarget.value) })} /></label>
       </div>

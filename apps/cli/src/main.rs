@@ -108,6 +108,7 @@ async fn audit_source(source: SourceKind, args: &CliArgs) -> SourceAudit {
     let request = SearchRequest {
         region: args.region.clone(),
         query: args.query.clone(),
+        category: None,
         max_results: args.max_results,
         max_pages: args.pages,
         concurrency: 1,
