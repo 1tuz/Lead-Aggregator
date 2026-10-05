@@ -278,6 +278,7 @@ pub struct ScrapeProgress {
     pub region: Option<String>,
     #[serde(default)]
     pub state: Option<ProviderRunState>,
+    #[specta(type = Option<f64>)]
     #[serde(default)]
     pub retry_after_seconds: Option<u64>,
 }
@@ -352,6 +353,7 @@ pub struct AppError {
     pub kind: ErrorKind,
     pub message: String,
     pub retryable: bool,
+    #[specta(type = Option<f64>)]
     #[serde(default)]
     pub retry_after_seconds: Option<u64>,
     #[serde(default)]

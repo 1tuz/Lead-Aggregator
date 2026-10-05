@@ -1,4 +1,5 @@
 mod commands;
+mod credentials;
 mod state;
 
 use std::{fs, path::Path, sync::Arc};
@@ -16,9 +17,9 @@ use twogis_storage_sqlite::SqliteStore;
 
 use crate::{
     commands::{
-        cancel_search, export_results, health, pause_provider, recent_collection_jobs,
-        recent_results, recent_runs, results_for_run, results_for_run_page, resume_provider,
-        resume_search, start_search,
+        cancel_search, delete_2gis_api_key, export_results, health, pause_provider,
+        recent_collection_jobs, recent_results, recent_runs, results_for_run, results_for_run_page,
+        resume_provider, resume_search, save_2gis_api_key, start_search, two_gis_api_key_saved,
     },
     state::AppState,
 };
@@ -36,7 +37,10 @@ fn specta_builder() -> Builder<Wry> {
         results_for_run,
         results_for_run_page,
         export_results,
-        health
+        health,
+        save_2gis_api_key,
+        delete_2gis_api_key,
+        two_gis_api_key_saved
     ])
 }
 
@@ -57,8 +61,15 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             let db_path = app_data.join("lead-aggregator.db");
             migrate_legacy_database(&app_data, &db_path)?;
 
+            let api_key = credentials::load_2gis_api_key().unwrap_or_default();
+            let api_key_state = Arc::new(std::sync::RwLock::new(api_key));
+
             let providers: Vec<Arc<dyn DirectoryProvider>> = vec![
-                Arc::new(TwoGisHtmlProvider::new().map_err(as_setup_error)?),
+                Arc::new(
+                    TwoGisHtmlProvider::new()
+                        .map_err(as_setup_error)?
+                        .with_api_key_state(api_key_state.clone()),
+                ),
                 Arc::new(YellHtmlProvider::new().map_err(as_setup_error)?),
                 Arc::new(ZoonHtmlProvider::new().map_err(as_setup_error)?),
                 Arc::new(RusprofileHtmlProvider::new().map_err(as_setup_error)?),
@@ -70,6 +81,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 app: handle,
                 service,
                 cancellation: tokio::sync::Mutex::new(None),
+                api_key_state,
             });
             Ok(())
         })

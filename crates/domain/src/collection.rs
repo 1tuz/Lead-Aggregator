@@ -131,6 +131,7 @@ pub struct ProviderStatus {
     pub current: u32,
     pub total: Option<u32>,
     pub message: String,
+    #[specta(type = Option<f64>)]
     pub retry_after_seconds: Option<u64>,
 }
 

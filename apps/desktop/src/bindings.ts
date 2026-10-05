@@ -16,6 +16,9 @@ export const commands = {
 	resultsForRunPage: (runId: string, offset: number, limit: number) => typedError<RunResultsPage, AppError>(__TAURI_INVOKE("results_for_run_page", { runId, offset, limit })),
 	exportResults: (runId: string, format: ExportFormat) => typedError<ExportReceipt, AppError>(__TAURI_INVOKE("export_results", { runId, format })),
 	health: () => __TAURI_INVOKE<HealthInfo>("health"),
+	save2gisApiKey: (key: string) => typedError<boolean, AppError>(__TAURI_INVOKE("save_2gis_api_key", { key })),
+	delete2gisApiKey: () => typedError<boolean, AppError>(__TAURI_INVOKE("delete_2gis_api_key")),
+	twoGisApiKeySaved: () => __TAURI_INVOKE<boolean>("two_gis_api_key_saved"),
 };
 
 /* Types */
@@ -23,14 +26,9 @@ export type AppError = {
 	kind: ErrorKind,
 	message: string,
 	retryable: boolean,
-	retryAfterSeconds: number | null,
+	retryAfterSeconds?: number | null,
+	diagnostics?: ResponseDiagnostics | null,
 };
-
-export type ErrorKind = "validation" | "network" | "rateLimited" | "blocked" | "captchaRequired" | "challengeRequired" | "parse" | "storage" | "export" | "cancelled" | "internal";
-
-export type CollectionPreset = "gentle" | "normal" | "custom";
-
-export type CollectionJobState = "running" | "paused" | "completed" | "partial" | "failed" | "interrupted" | "cancelled";
 
 export type CollectionJobInfo = {
 	jobId: string,
@@ -42,6 +40,18 @@ export type CollectionJobInfo = {
 	completedTargets: number,
 	totalTargets: number,
 };
+
+export type CollectionJobState = "running" | "paused" | "completed" | "partial" | "failed" | "interrupted" | "cancelled";
+
+export type CollectionPreset = "gentle" | "normal" | "custom";
+
+export type DedupeInfo = {
+	mergedRecords: number,
+	fingerprint: string,
+	possibleDuplicate: boolean,
+};
+
+export type ErrorKind = "validation" | "network" | "rateLimited" | "blocked" | "captchaRequired" | "challengeRequired" | "parse" | "storage" | "export" | "cancelled" | "internal";
 
 export type ExportFormat = "csv" | "json" | "xlsx";
 
@@ -59,26 +69,11 @@ export type HealthInfo = {
 	availableSources: SourceKind[],
 };
 
-export type SourceKind = "twoGis" | "yell" | "zoon" | "rusprofile";
-
-export type SourceAttribution = {
-	source: SourceKind,
-	sourceId: string,
-	sourceUrl: string,
-	collectedAt: string,
-};
-
 export type LeadBranch = {
 	address: string,
 	latitude: number | null,
 	longitude: number | null,
 	source: SourceKind,
-};
-
-export type DedupeInfo = {
-	mergedRecords: number,
-	fingerprint: string,
-	possibleDuplicate: boolean,
 };
 
 export type Organization = {
@@ -97,34 +92,12 @@ export type Organization = {
 	longitude: number | null,
 	sourceUrl: string,
 	collectedAt: string,
-	inn: string | null,
-	ogrn: string | null,
-	sources: SourceAttribution[],
-	tags: string[],
-	branches: LeadBranch[],
-	dedupe: DedupeInfo,
-};
-
-export type RunSummary = {
-	runId: string,
-	startedAt: string,
-	finishedAt: string,
-	organizations: Organization[],
-	warnings: string[],
-	rawRecords: number,
-	duplicatesMerged: number,
-	organizationCount: number,
-};
-
-export type SearchRunInfo = {
-	runId: string,
-	startedAt: string,
-	finishedAt: string,
-	request: SearchRequest,
-	warnings: string[],
-	rawRecords: number,
-	duplicatesMerged: number,
-	organizationCount: number,
+	inn?: string | null,
+	ogrn?: string | null,
+	sources?: SourceAttribution[],
+	tags?: string[],
+	branches?: LeadBranch[],
+	dedupe?: DedupeInfo,
 };
 
 export type ProviderSearchConfig = {
@@ -139,16 +112,13 @@ export type ProviderSearchConfig = {
 	backoffBaseSeconds: number,
 };
 
-export type SearchRequest = {
-	region: string,
-	query: string,
-	maxResults: number,
-	maxPages: number,
-	concurrency: number,
-	requestDelayMs: number,
-	sources: SourceKind[],
-	regions: string[],
-	providerConfigs: ProviderSearchConfig[],
+export type ResponseDiagnostics = {
+	source: SourceKind,
+	httpStatus: number | null,
+	requestUrl: string,
+	finalUrl: string | null,
+	pageTitle: string | null,
+	reason: string,
 };
 
 export type RunResultsPage = {
@@ -158,6 +128,49 @@ export type RunResultsPage = {
 	limit: number,
 	total: number,
 };
+
+export type RunSummary = {
+	runId: string,
+	startedAt: string,
+	finishedAt: string,
+	organizations: Organization[],
+	warnings: string[],
+	rawRecords: number,
+	duplicatesMerged: number,
+	organizationCount: number,
+};
+
+export type SearchRequest = {
+	region: string,
+	query: string,
+	maxResults: number,
+	maxPages: number,
+	concurrency: number,
+	requestDelayMs: number,
+	sources?: SourceKind[],
+	regions?: string[],
+	providerConfigs?: ProviderSearchConfig[],
+};
+
+export type SearchRunInfo = {
+	runId: string,
+	startedAt: string,
+	finishedAt: string,
+	request: SearchRequest,
+	warnings: string[],
+	rawRecords: number,
+	duplicatesMerged: number,
+	organizationCount: number,
+};
+
+export type SourceAttribution = {
+	source: SourceKind,
+	sourceId: string,
+	sourceUrl: string,
+	collectedAt: string,
+};
+
+export type SourceKind = "twoGis" | "yell" | "zoon" | "rusprofile";
 
 /* Tauri Specta runtime */
 async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {

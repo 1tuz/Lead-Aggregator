@@ -39,7 +39,7 @@
               <td>{row.phones[0] ?? '—'}</td>
               <td>{row.inn ?? '—'}</td>
               <td>{row.website ?? row.email ?? '—'}</td>
-              <td><div class="chips">{#each row.tags.slice(0, 3) as tag}<span class:warn-chip={tag === 'Возможный дубль'} class="chip">{tag}</span>{/each}</div></td>
+              <td><div class="chips">{#each (row.tags ?? []).slice(0, 3) as tag}<span class:warn-chip={tag === 'Возможный дубль'} class="chip">{tag}</span>{/each}</div></td>
             </tr>
           {/each}
         {/if}

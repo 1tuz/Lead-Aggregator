@@ -1,6 +1,10 @@
+mod api;
 mod parse;
 
-use std::collections::HashSet;
+use std::{
+    collections::HashSet,
+    sync::{Arc, RwLock},
+};
 
 use async_trait::async_trait;
 use futures::{StreamExt, stream};
@@ -18,6 +22,7 @@ use url::Url;
 pub struct TwoGisHtmlProvider {
     http: CatalogHttpClient,
     base: Url,
+    api_key: Arc<RwLock<Option<String>>>,
 }
 
 impl TwoGisHtmlProvider {
@@ -25,7 +30,16 @@ impl TwoGisHtmlProvider {
         let http = CatalogHttpClient::new()?;
         let base = Url::parse("https://2gis.ru/")
             .map_err(|e| AppError::new(ErrorKind::Internal, e.to_string(), false))?;
-        Ok(Self { http, base })
+        Ok(Self {
+            http,
+            base,
+            api_key: Arc::new(RwLock::new(None)),
+        })
+    }
+
+    pub fn with_api_key_state(mut self, api_key: Arc<RwLock<Option<String>>>) -> Self {
+        self.api_key = api_key;
+        self
     }
 
     pub fn search_url(&self, request: &SearchRequest, page: u16) -> Result<Url, AppError> {
@@ -57,7 +71,9 @@ impl TwoGisHtmlProvider {
     ) -> Result<(String, Option<u16>), AppError> {
         let report = self.http.fetch_html_report(SourceKind::TwoGis, url).await?;
         let actual_page = Self::extract_page_from_url(&report.final_url);
-        if let Some(actual) = actual_page && actual < expected_page {
+        if let Some(actual) = actual_page
+            && actual < expected_page
+        {
             return Err(AppError::new(
                 ErrorKind::Network,
                 format!(
@@ -173,11 +189,11 @@ impl DirectoryProvider for TwoGisHtmlProvider {
     }
 
     fn id(&self) -> &'static str {
-        "2gis-public-html"
+        "2gis-official-api-html-fallback"
     }
 
     fn policy(&self) -> ProviderPolicy {
-        ProviderPolicy::conservative(1_500, 1)
+        ProviderPolicy::conservative(2_000, 1)
     }
 
     async fn search(
@@ -186,6 +202,14 @@ impl DirectoryProvider for TwoGisHtmlProvider {
         progress: ProgressSink,
         control: ProviderControl,
     ) -> Result<ProviderOutput, AppError> {
+        let api_key = self
+            .api_key
+            .read()
+            .map_err(|_| AppError::storage("2GIS API credential state is unavailable"))?
+            .clone();
+        if let Some(api_key) = api_key.filter(|value| !value.trim().is_empty()) {
+            return api::search(self, &api_key, request, progress, control).await;
+        }
         request.validate()?;
         let config = request.config_for(SourceKind::TwoGis);
         let runtime = ProviderRuntime::for_request(self.policy(), request, SourceKind::TwoGis);

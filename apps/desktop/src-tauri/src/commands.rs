@@ -13,6 +13,41 @@ use crate::state::AppState;
 
 #[tauri::command]
 #[specta::specta]
+pub fn save_2gis_api_key(state: State<'_, AppState>, key: String) -> Result<bool, AppError> {
+    let key = key.trim();
+    if !(8..=512).contains(&key.len()) || key.chars().any(char::is_control) {
+        return Err(AppError::validation("Введите корректный ключ API 2ГИС"));
+    }
+    crate::credentials::save_2gis_api_key(key)?;
+    *state
+        .api_key_state
+        .write()
+        .map_err(|_| AppError::storage("Состояние ключа 2ГИС недоступно"))? = Some(key.to_owned());
+    Ok(true)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn delete_2gis_api_key(state: State<'_, AppState>) -> Result<bool, AppError> {
+    crate::credentials::delete_2gis_api_key()?;
+    *state
+        .api_key_state
+        .write()
+        .map_err(|_| AppError::storage("Состояние ключа 2ГИС недоступно"))? = None;
+    Ok(true)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn two_gis_api_key_saved(state: State<'_, AppState>) -> bool {
+    state
+        .api_key_state
+        .read()
+        .is_ok_and(|key| key.as_ref().is_some_and(|value| !value.trim().is_empty()))
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn start_search(
     state: State<'_, AppState>,
     request: SearchRequest,

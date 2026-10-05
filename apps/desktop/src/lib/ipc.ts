@@ -77,6 +77,9 @@ export const api = {
   exportResults: async (runId: string, format: ExportFormat) =>
     unwrap(await commands.exportResults(runId, format)),
   health: () => commands.health(),
+  save2gisApiKey: async (key: string) => unwrap(await commands.save2gisApiKey(key)),
+  delete2gisApiKey: async () => unwrap(await commands.delete2gisApiKey()),
+  twoGisApiKeySaved: () => commands.twoGisApiKeySaved(),
 };
 
 export function errorMessage(error: unknown): string {

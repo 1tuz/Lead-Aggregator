@@ -7,6 +7,7 @@
   import LeadTable from './lib/components/LeadTable.svelte';
   import ProviderControls from './lib/components/ProviderControls.svelte';
   import ProviderStatusPanel from './lib/components/ProviderStatusPanel.svelte';
+  import TwoGisApiKeySettings from './lib/components/TwoGisApiKeySettings.svelte';
 
   const allSources: SourceKind[] = ['twoGis', 'yell', 'zoon', 'rusprofile'];
   const initialProviderConfigs: ProviderSearchConfig[] = [
@@ -44,6 +45,7 @@
   let health: HealthInfo | null = null;
   let theme: 'frost' | 'graphite' = 'frost';
   let sidebarCollapsed = false;
+  let twoGisApiKeySaved = false;
 
   $: normalizedLocation = normalizePlaceName(locationText);
   $: matchingRegions = regionFilter
@@ -92,6 +94,7 @@
     if (storedTheme === 'graphite') theme = 'graphite';
     applyTheme();
     void api.health().then((value) => (health = value)).catch(() => undefined);
+    void api.twoGisApiKeySaved().then((value) => (twoGisApiKeySaved = value)).catch(() => undefined);
     void loadRecentRuns().catch(() => undefined);
     const unlisten = listen<ScrapeProgress>('scrape-progress', ({ payload }) => {
       message = payload.message;
@@ -201,6 +204,16 @@
       sources: active.map((config) => config.source),
       providerConfigs,
     };
+  }
+
+  async function saveTwoGisApiKey(key: string) {
+    await api.save2gisApiKey(key);
+    twoGisApiKeySaved = true;
+  }
+
+  async function deleteTwoGisApiKey() {
+    await api.delete2gisApiKey();
+    twoGisApiKeySaved = false;
   }
 
   function applySummary(summary: Awaited<ReturnType<typeof api.startSearch>>) {
@@ -326,6 +339,12 @@
       <details class="settings-disclosure">
         <summary>Настройки источников</summary>
         <div class="settings-content">
+          <TwoGisApiKeySettings
+            saved={twoGisApiKeySaved}
+            disabled={running}
+            onSave={saveTwoGisApiKey}
+            onDelete={deleteTwoGisApiKey}
+          />
           <ProviderControls
             configs={providerConfigs}
             {running}
@@ -396,8 +415,8 @@
 
     <section class="stats">
       <div><Database size={16} /><strong>{totalRows}</strong><span>уникальных лидов</span></div>
-      <div><strong>{rows.filter((r) => r.sources.length > 1).length}</strong><span>из 2+ источников</span></div>
-      <div><strong>{rows.filter((r) => r.dedupe.possibleDuplicate).length}</strong><span>возможных дублей</span></div>
+      <div><strong>{rows.filter((r) => (r.sources ?? []).length > 1).length}</strong><span>из 2+ источников</span></div>
+      <div><strong>{rows.filter((r) => r.dedupe?.possibleDuplicate).length}</strong><span>возможных дублей</span></div>
       <div><strong>{rawRecords}</strong><span>исходных записей</span></div>
       <div><strong>{duplicatesMerged}</strong><span>объединено</span></div>
     </section>

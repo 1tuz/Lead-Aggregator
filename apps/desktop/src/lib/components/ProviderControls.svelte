@@ -21,7 +21,7 @@
   };
 
   const safeMinimums: Record<SourceKind, { delay: number; concurrency: number }> = {
-    twoGis: { delay: 1500, concurrency: 1 },
+    twoGis: { delay: 2000, concurrency: 1 },
     yell: { delay: 2000, concurrency: 1 },
     zoon: { delay: 3000, concurrency: 1 },
     rusprofile: { delay: 4500, concurrency: 1 },
