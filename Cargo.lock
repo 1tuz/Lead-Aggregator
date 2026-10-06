@@ -2767,7 +2767,7 @@ dependencies = [
 
 [[package]]
 name = "lead-aggregator-cli"
-version = "0.4.7"
+version = "0.5.0"
 dependencies = [
  "clap",
  "serde_json",
@@ -6094,7 +6094,7 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "twogis-application"
-version = "0.4.7"
+version = "0.5.0"
 dependencies = [
  "chrono",
  "futures",
@@ -6110,7 +6110,7 @@ dependencies = [
 
 [[package]]
 name = "twogis-dedupe"
-version = "0.4.7"
+version = "0.5.0"
 dependencies = [
  "regex",
  "twogis-domain",
@@ -6119,7 +6119,7 @@ dependencies = [
 
 [[package]]
 name = "twogis-domain"
-version = "0.4.7"
+version = "0.5.0"
 dependencies = [
  "aes-gcm",
  "serde",
@@ -6131,7 +6131,7 @@ dependencies = [
 
 [[package]]
 name = "twogis-export"
-version = "0.4.7"
+version = "0.5.0"
 dependencies = [
  "csv",
  "rust_xlsxwriter",
@@ -6140,7 +6140,7 @@ dependencies = [
 
 [[package]]
 name = "twogis-extractor-desktop"
-version = "0.4.7"
+version = "0.5.0"
 dependencies = [
  "chrono",
  "keyring",
@@ -6164,7 +6164,7 @@ dependencies = [
 
 [[package]]
 name = "twogis-provider"
-version = "0.4.7"
+version = "0.5.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -6182,7 +6182,7 @@ dependencies = [
 
 [[package]]
 name = "twogis-provider-core"
-version = "0.4.7"
+version = "0.5.0"
 dependencies = [
  "async-trait",
  "regex",
@@ -6195,7 +6195,7 @@ dependencies = [
 
 [[package]]
 name = "twogis-storage-sqlite"
-version = "0.4.7"
+version = "0.5.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -7240,7 +7240,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.4.7"
+version = "0.5.0"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",
