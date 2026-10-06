@@ -87,6 +87,8 @@ jobs:
       actions: read
       contents: write
     steps:
+      - name: Check out release scripts
+        uses: actions/checkout@v5
       - name: Download platform installers
         uses: actions/download-artifact@v7
         with:
