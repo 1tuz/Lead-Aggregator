@@ -33,18 +33,12 @@ pub struct ProviderSearchConfig {
 
 impl ProviderSearchConfig {
     pub fn recommended(source: SourceKind, preset: CollectionPreset) -> Self {
-        // Gentle = default safe smoke. Normal = larger jobs, still clamped by ProviderPolicy.
+        // db-export provider: each rubric is one plain GET of a static file
+        // from our own data source, so no throttling is required. The policy
+        // floor stays minimal; users can still slow it down manually.
         let (delay, concurrency, results, pages, retries, backoff) = match (source, preset) {
-            // Official 2GIS search APIs allow 600 requests/minute. Keep a
-            // margin for category/region lookups and other app activity.
-            (SourceKind::TwoGis, CollectionPreset::Gentle) => (250, 1, 500, 50, 2, 60),
-            (SourceKind::TwoGis, _) => (250, 1, 1_000, 100, 1, 45),
-            (SourceKind::Yell, CollectionPreset::Gentle) => (2_500, 1, 1_500, 50, 2, 90),
-            (SourceKind::Yell, _) => (2_000, 1, 7_500, 500, 1, 60),
-            (SourceKind::Zoon, CollectionPreset::Gentle) => (3_500, 1, 1_000, 40, 2, 120),
-            (SourceKind::Zoon, _) => (3_000, 1, 5_000, 400, 1, 90),
-            (SourceKind::Rusprofile, CollectionPreset::Gentle) => (5_000, 1, 1_000, 50, 2, 180),
-            (SourceKind::Rusprofile, _) => (4_500, 1, 10_000, 1_000, 1, 120),
+            (SourceKind::TwoGis, CollectionPreset::Gentle) => (0, 1, 50_000, 1_000, 2, 60),
+            (SourceKind::TwoGis, _) => (0, 1, 50_000, 2_000, 1, 45),
         };
         Self {
             source,
@@ -79,9 +73,9 @@ impl ProviderSearchConfig {
                 self.source.label()
             )));
         }
-        if self.request_delay_ms < 250 {
+        if self.request_delay_ms > 10_000 {
             return Err(AppError::validation(format!(
-                "{} request delay must be at least 250ms",
+                "{} request delay must be at most 10000ms",
                 self.source.label()
             )));
         }
@@ -98,15 +92,10 @@ impl ProviderSearchConfig {
 }
 
 pub fn default_provider_configs() -> Vec<ProviderSearchConfig> {
-    [
-        SourceKind::TwoGis,
-        SourceKind::Yell,
-        SourceKind::Zoon,
-        SourceKind::Rusprofile,
-    ]
-    .into_iter()
-    .map(|source| ProviderSearchConfig::recommended(source, CollectionPreset::Gentle))
-    .collect()
+    [SourceKind::TwoGis]
+        .into_iter()
+        .map(|source| ProviderSearchConfig::recommended(source, CollectionPreset::Gentle))
+        .collect()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -191,16 +180,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn provider_defaults_are_source_specific() {
+    fn provider_defaults_enable_two_gis() {
         let two_gis =
             ProviderSearchConfig::recommended(SourceKind::TwoGis, CollectionPreset::Gentle);
-        let rusprofile =
-            ProviderSearchConfig::recommended(SourceKind::Rusprofile, CollectionPreset::Gentle);
-        assert!(two_gis.request_delay_ms < rusprofile.request_delay_ms);
         assert_eq!(two_gis.concurrency, 1);
-        assert_eq!(rusprofile.concurrency, 1);
         assert!(two_gis.enabled);
-        assert!(!rusprofile.enabled);
     }
 
     #[test]

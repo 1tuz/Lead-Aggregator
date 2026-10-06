@@ -801,7 +801,7 @@ mod tests {
             ..Organization::default()
         };
         source.sources.push(SourceAttribution {
-            source: SourceKind::Yell,
+            source: SourceKind::TwoGis,
             source_id: "new".into(),
             source_url: source.source_url.clone(),
             collected_at: source.collected_at.clone(),
@@ -845,7 +845,7 @@ mod tests {
             ..Organization::default()
         };
         first.sources.push(SourceAttribution {
-            source: SourceKind::Yell,
+            source: SourceKind::TwoGis,
             source_id: "yell-1".into(),
             source_url: first.source_url.clone(),
             collected_at: first.collected_at.clone(),
@@ -865,7 +865,7 @@ mod tests {
             ..Organization::default()
         };
         enriched.sources.push(SourceAttribution {
-            source: SourceKind::Rusprofile,
+            source: SourceKind::TwoGis,
             source_id: "rusprofile-1".into(),
             source_url: enriched.source_url.clone(),
             collected_at: enriched.collected_at.clone(),
@@ -883,7 +883,7 @@ mod tests {
             ..Organization::default()
         };
         inn_only.sources.push(SourceAttribution {
-            source: SourceKind::Rusprofile,
+            source: SourceKind::TwoGis,
             source_id: "rusprofile-2".into(),
             source_url: inn_only.source_url.clone(),
             collected_at: inn_only.collected_at.clone(),

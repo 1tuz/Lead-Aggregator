@@ -14,36 +14,18 @@
   } = $props();
 
   const labels: Record<SourceKind, string> = {
-    twoGis: '2GIS',
-    yell: 'Yell',
-    zoon: 'Zoon',
-    rusprofile: 'Rusprofile',
+    twoGis: '2GIS · выгрузки',
   };
 
   const safeMinimums: Record<SourceKind, { delay: number; concurrency: number }> = {
-    twoGis: { delay: 250, concurrency: 1 },
-    yell: { delay: 2000, concurrency: 1 },
-    zoon: { delay: 3000, concurrency: 1 },
-    rusprofile: { delay: 4500, concurrency: 1 },
+    twoGis: { delay: 0, concurrency: 1 },
   };
 
   function recommended(source: SourceKind, preset: Exclude<CollectionPreset, 'custom'>): ProviderSearchConfig {
     const table: Record<SourceKind, Record<'gentle' | 'normal', Omit<ProviderSearchConfig, 'source' | 'enabled' | 'preset'>>> = {
       twoGis: {
-        gentle: { maxResults: 500, maxPages: 50, concurrency: 1, requestDelayMs: 250, maxRetries: 2, backoffBaseSeconds: 60 },
-        normal: { maxResults: 1000, maxPages: 100, concurrency: 1, requestDelayMs: 250, maxRetries: 1, backoffBaseSeconds: 45 },
-      },
-      yell: {
-        gentle: { maxResults: 1500, maxPages: 50, concurrency: 1, requestDelayMs: 2500, maxRetries: 2, backoffBaseSeconds: 90 },
-        normal: { maxResults: 7500, maxPages: 500, concurrency: 1, requestDelayMs: 2000, maxRetries: 1, backoffBaseSeconds: 60 },
-      },
-      zoon: {
-        gentle: { maxResults: 1000, maxPages: 40, concurrency: 1, requestDelayMs: 3500, maxRetries: 2, backoffBaseSeconds: 120 },
-        normal: { maxResults: 5000, maxPages: 400, concurrency: 1, requestDelayMs: 3000, maxRetries: 1, backoffBaseSeconds: 90 },
-      },
-      rusprofile: {
-        gentle: { maxResults: 1000, maxPages: 50, concurrency: 1, requestDelayMs: 5000, maxRetries: 2, backoffBaseSeconds: 180 },
-        normal: { maxResults: 10000, maxPages: 1000, concurrency: 1, requestDelayMs: 4500, maxRetries: 1, backoffBaseSeconds: 120 },
+        gentle: { maxResults: 50_000, maxPages: 1000, concurrency: 1, requestDelayMs: 0, maxRetries: 2, backoffBaseSeconds: 60 },
+        normal: { maxResults: 50_000, maxPages: 2000, concurrency: 1, requestDelayMs: 0, maxRetries: 1, backoffBaseSeconds: 45 },
       },
     };
     const current = configs.find((config) => config.source === source);
@@ -83,7 +65,7 @@
           onchange={(event) => patch(config.source, { enabled: event.currentTarget.checked }, false)}
         />
         <strong>{labels[config.source]}</strong>
-        <small>мин. {safeMinimums[config.source].delay} мс · до {safeMinimums[config.source].concurrency} параллельно</small>
+        <small>без пауз · выгрузки статичны</small>
       </summary>
 
       <div class="provider-body">
@@ -96,9 +78,7 @@
           </select>
         </label>
         <label><span>Лимит</span><input type="number" min="1" max="50000" value={config.maxResults} disabled={running} onchange={(event) => patch(config.source, { maxResults: Number(event.currentTarget.value) })} /></label>
-        <label><span>{config.source === 'twoGis' ? 'Запросов API' : 'Страниц'}</span><input type="number" min="1" max={config.source === 'twoGis' ? 100 : 5000} value={config.maxPages} disabled={running} onchange={(event) => patch(config.source, { maxPages: Number(event.currentTarget.value) })} /></label>
-        <label><span>Пауза, мс</span><input type="number" min="250" step="50" value={config.requestDelayMs} disabled={running} onchange={(event) => patch(config.source, { requestDelayMs: Number(event.currentTarget.value) })} /></label>
-        <label><span>Параллельно</span><input type="number" min="1" max="8" value={config.concurrency} disabled={running} onchange={(event) => patch(config.source, { concurrency: Number(event.currentTarget.value) })} /></label>
+        <label><span>Пауза, мс</span><input type="number" min="0" step="50" value={config.requestDelayMs} disabled={running} onchange={(event) => patch(config.source, { requestDelayMs: Number(event.currentTarget.value) })} /></label>
       </div>
     </details>
   {/each}

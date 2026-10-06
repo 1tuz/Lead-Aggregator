@@ -1,0 +1,2602 @@
+[
+    {
+        "code": "abakan",
+        "country_code": "ru",
+        "id": "69",
+        "name": "Абакан",
+        "statistics": {
+            "branch_count": 29983,
+            "org_count": 22912,
+            "route_count": 171,
+            "rubric_count": 1372
+        },
+        "type": "region"
+    },
+    {
+        "code": "abkhazia",
+        "country_code": "ru",
+        "id": "248",
+        "name": "Абхазия",
+        "statistics": {
+            "branch_count": 3031,
+            "org_count": 2796,
+            "route_count": 49,
+            "rubric_count": 445
+        },
+        "type": "region"
+    },
+    {
+        "code": "aktau",
+        "country_code": "kz",
+        "id": "196",
+        "name": "Актау",
+        "statistics": {
+            "branch_count": 21470,
+            "org_count": 16595,
+            "route_count": 64,
+            "rubric_count": 1216
+        },
+        "type": "region"
+    },
+    {
+        "code": "aktobe",
+        "country_code": "kz",
+        "id": "167",
+        "name": "Актобе",
+        "statistics": {
+            "branch_count": 21137,
+            "org_count": 16250,
+            "route_count": 47,
+            "rubric_count": 1192
+        },
+        "type": "region"
+    },
+    {
+        "code": "almaty",
+        "country_code": "kz",
+        "id": "67",
+        "name": "Алматы",
+        "statistics": {
+            "branch_count": 129795,
+            "org_count": 96012,
+            "route_count": 269,
+            "rubric_count": 1504
+        },
+        "type": "region"
+    },
+    {
+        "code": "almetevsk",
+        "country_code": "ru",
+        "id": "108",
+        "name": "Альметьевск",
+        "statistics": {
+            "branch_count": 14132,
+            "org_count": 10330,
+            "route_count": 40,
+            "rubric_count": 1202
+        },
+        "type": "region"
+    },
+    {
+        "code": "anadyr",
+        "country_code": "ru",
+        "id": "155",
+        "name": "Анадырь",
+        "statistics": {
+            "branch_count": 593,
+            "org_count": 538,
+            "route_count": 4,
+            "rubric_count": 447
+        },
+        "type": "region"
+    },
+    {
+        "code": "armawir",
+        "country_code": "ru",
+        "id": "106",
+        "name": "Армавир",
+        "statistics": {
+            "branch_count": 13552,
+            "org_count": 10394,
+            "route_count": 83,
+            "rubric_count": 1176
+        },
+        "type": "region"
+    },
+    {
+        "code": "armenia",
+        "country_code": "am",
+        "id": "253",
+        "name": "Армения",
+        "statistics": {
+            "branch_count": 41508,
+            "org_count": 28012,
+            "route_count": 112,
+            "rubric_count": 1206
+        },
+        "type": "region"
+    },
+    {
+        "code": "arkhangelsk",
+        "country_code": "ru",
+        "id": "49",
+        "name": "Архангельск",
+        "statistics": {
+            "branch_count": 25055,
+            "org_count": 16715,
+            "route_count": 99,
+            "rubric_count": 1403
+        },
+        "type": "region"
+    },
+    {
+        "code": "asir",
+        "country_code": "sa",
+        "id": "223",
+        "name": "Асир",
+        "statistics": {
+            "branch_count": 1,
+            "org_count": 1,
+            "route_count": 0,
+            "rubric_count": 32
+        },
+        "type": "region"
+    },
+    {
+        "code": "nur_sultan",
+        "country_code": "kz",
+        "id": "68",
+        "name": "Астана",
+        "statistics": {
+            "branch_count": 79959,
+            "org_count": 56910,
+            "route_count": 121,
+            "rubric_count": 1423
+        },
+        "type": "region"
+    },
+    {
+        "code": "astrakhan",
+        "country_code": "ru",
+        "id": "8",
+        "name": "Астрахань",
+        "statistics": {
+            "branch_count": 25478,
+            "org_count": 17964,
+            "route_count": 173,
+            "rubric_count": 1369
+        },
+        "type": "region"
+    },
+    {
+        "code": "atyrau",
+        "country_code": "kz",
+        "id": "168",
+        "name": "Атырау",
+        "statistics": {
+            "branch_count": 17198,
+            "org_count": 13537,
+            "route_count": 57,
+            "rubric_count": 1206
+        },
+        "type": "region"
+    },
+    {
+        "code": "bagan",
+        "country_code": "ru",
+        "id": "176",
+        "name": "Баган",
+        "statistics": {
+            "branch_count": 424,
+            "org_count": 372,
+            "route_count": 10,
+            "rubric_count": 225
+        },
+        "type": "region"
+    },
+    {
+        "code": "baku",
+        "country_code": "az",
+        "id": "209",
+        "name": "Баку",
+        "statistics": {
+            "branch_count": 50438,
+            "org_count": 42685,
+            "route_count": 216,
+            "rubric_count": 1111
+        },
+        "type": "region"
+    },
+    {
+        "code": "balakovo",
+        "country_code": "ru",
+        "id": "121",
+        "name": "Балаково",
+        "statistics": {
+            "branch_count": 5775,
+            "org_count": 4389,
+            "route_count": 22,
+            "rubric_count": 1009
+        },
+        "type": "region"
+    },
+    {
+        "code": "barabinsk",
+        "country_code": "ru",
+        "id": "177",
+        "name": "Барабинск",
+        "statistics": {
+            "branch_count": 1283,
+            "org_count": 1095,
+            "route_count": 23,
+            "rubric_count": 511
+        },
+        "type": "region"
+    },
+    {
+        "code": "barnaul",
+        "country_code": "ru",
+        "id": "4",
+        "name": "Барнаул",
+        "statistics": {
+            "branch_count": 50483,
+            "org_count": 36688,
+            "route_count": 168,
+            "rubric_count": 1489
+        },
+        "type": "region"
+    },
+    {
+        "code": "basra",
+        "country_code": "iq",
+        "id": "243",
+        "name": "Басра",
+        "statistics": {
+            "branch_count": 175,
+            "org_count": 172,
+            "route_count": 0,
+            "rubric_count": 117
+        },
+        "type": "region"
+    },
+    {
+        "code": "batumi",
+        "country_code": "ge",
+        "id": "255",
+        "name": "Батуми",
+        "statistics": {
+            "branch_count": 7872,
+            "org_count": 5478,
+            "route_count": 78,
+            "rubric_count": 799
+        },
+        "type": "region"
+    },
+    {
+        "code": "bahrain",
+        "country_code": "bh",
+        "id": "233",
+        "name": "Бахрейн",
+        "statistics": {
+            "branch_count": 51970,
+            "org_count": 48361,
+            "route_count": 0,
+            "rubric_count": 737
+        },
+        "type": "region"
+    },
+    {
+        "code": "belgorod",
+        "country_code": "ru",
+        "id": "46",
+        "name": "Белгород",
+        "statistics": {
+            "branch_count": 20368,
+            "org_count": 12990,
+            "route_count": 146,
+            "rubric_count": 1322
+        },
+        "type": "region"
+    },
+    {
+        "code": "biysk",
+        "country_code": "ru",
+        "id": "20",
+        "name": "Бийск",
+        "statistics": {
+            "branch_count": 14562,
+            "org_count": 11202,
+            "route_count": 93,
+            "rubric_count": 1255
+        },
+        "type": "region"
+    },
+    {
+        "code": "blagoveshensk",
+        "country_code": "ru",
+        "id": "52",
+        "name": "Благовещенск",
+        "statistics": {
+            "branch_count": 20382,
+            "org_count": 15666,
+            "route_count": 55,
+            "rubric_count": 1343
+        },
+        "type": "region"
+    },
+    {
+        "code": "bratsk",
+        "country_code": "ru",
+        "id": "51",
+        "name": "Братск",
+        "statistics": {
+            "branch_count": 9659,
+            "org_count": 6270,
+            "route_count": 66,
+            "rubric_count": 1172
+        },
+        "type": "region"
+    },
+    {
+        "code": "bryansk",
+        "country_code": "ru",
+        "id": "62",
+        "name": "Брянск",
+        "statistics": {
+            "branch_count": 17064,
+            "org_count": 10995,
+            "route_count": 120,
+            "rubric_count": 1275
+        },
+        "type": "region"
+    },
+    {
+        "code": "bukhara",
+        "country_code": "uz",
+        "id": "251",
+        "name": "Бухара",
+        "statistics": {
+            "branch_count": 12746,
+            "org_count": 11328,
+            "route_count": 18,
+            "rubric_count": 906
+        },
+        "type": "region"
+    },
+    {
+        "code": "v_novgorod",
+        "country_code": "ru",
+        "id": "77",
+        "name": "Великий Новгород",
+        "statistics": {
+            "branch_count": 9294,
+            "org_count": 6382,
+            "route_count": 51,
+            "rubric_count": 1210
+        },
+        "type": "region"
+    },
+    {
+        "code": "vengerovo",
+        "country_code": "ru",
+        "id": "178",
+        "name": "Венгерово",
+        "statistics": {
+            "branch_count": 550,
+            "org_count": 449,
+            "route_count": 12,
+            "rubric_count": 257
+        },
+        "type": "region"
+    },
+    {
+        "code": "vladivostok",
+        "country_code": "ru",
+        "id": "25",
+        "name": "Владивосток",
+        "statistics": {
+            "branch_count": 44376,
+            "org_count": 32159,
+            "route_count": 193,
+            "rubric_count": 1488
+        },
+        "type": "region"
+    },
+    {
+        "code": "vladikavkaz",
+        "country_code": "ru",
+        "id": "114",
+        "name": "Владикавказ",
+        "statistics": {
+            "branch_count": 14153,
+            "org_count": 11012,
+            "route_count": 111,
+            "rubric_count": 1136
+        },
+        "type": "region"
+    },
+    {
+        "code": "vladimir",
+        "country_code": "ru",
+        "id": "59",
+        "name": "Владимир",
+        "statistics": {
+            "branch_count": 15834,
+            "org_count": 10498,
+            "route_count": 67,
+            "rubric_count": 1322
+        },
+        "type": "region"
+    },
+    {
+        "code": "volgograd",
+        "country_code": "ru",
+        "id": "33",
+        "name": "Волгоград",
+        "statistics": {
+            "branch_count": 56021,
+            "org_count": 32645,
+            "route_count": 209,
+            "rubric_count": 1460
+        },
+        "type": "region"
+    },
+    {
+        "code": "volgodonsk",
+        "country_code": "ru",
+        "id": "122",
+        "name": "Волгодонск",
+        "statistics": {
+            "branch_count": 5996,
+            "org_count": 4303,
+            "route_count": 25,
+            "rubric_count": 1023
+        },
+        "type": "region"
+    },
+    {
+        "code": "vologda",
+        "country_code": "ru",
+        "id": "78",
+        "name": "Вологда",
+        "statistics": {
+            "branch_count": 25685,
+            "org_count": 16936,
+            "route_count": 88,
+            "rubric_count": 1340
+        },
+        "type": "region"
+    },
+    {
+        "code": "voronezh",
+        "country_code": "ru",
+        "id": "31",
+        "name": "Воронеж",
+        "statistics": {
+            "branch_count": 54757,
+            "org_count": 32752,
+            "route_count": 189,
+            "rubric_count": 1451
+        },
+        "type": "region"
+    },
+    {
+        "code": "grozny",
+        "country_code": "ru",
+        "id": "115",
+        "name": "Грозный",
+        "statistics": {
+            "branch_count": 20759,
+            "org_count": 16572,
+            "route_count": 63,
+            "rubric_count": 1075
+        },
+        "type": "region"
+    },
+    {
+        "code": "jizan",
+        "country_code": "sa",
+        "id": "227",
+        "name": "Джизан",
+        "statistics": {
+            "branch_count": 1,
+            "org_count": 1,
+            "route_count": 0,
+            "rubric_count": 32
+        },
+        "type": "region"
+    },
+    {
+        "code": "dimitrovgrad",
+        "country_code": "ru",
+        "id": "124",
+        "name": "Димитровград",
+        "statistics": {
+            "branch_count": 4623,
+            "org_count": 3210,
+            "route_count": 31,
+            "rubric_count": 968
+        },
+        "type": "region"
+    },
+    {
+        "code": "dovolnoe",
+        "country_code": "ru",
+        "id": "179",
+        "name": "Довольное",
+        "statistics": {
+            "branch_count": 466,
+            "org_count": 400,
+            "route_count": 14,
+            "rubric_count": 271
+        },
+        "type": "region"
+    },
+    {
+        "code": "ekaterinburg",
+        "country_code": "ru",
+        "id": "9",
+        "name": "Екатеринбург",
+        "statistics": {
+            "branch_count": 105636,
+            "org_count": 70545,
+            "route_count": 379,
+            "rubric_count": 1553
+        },
+        "type": "region"
+    },
+    {
+        "code": "elets",
+        "country_code": "ru",
+        "id": "126",
+        "name": "Елец",
+        "statistics": {
+            "branch_count": 3773,
+            "org_count": 2791,
+            "route_count": 22,
+            "rubric_count": 853
+        },
+        "type": "region"
+    },
+    {
+        "code": "zhezkazgan",
+        "country_code": "kz",
+        "id": "242",
+        "name": "Жезказган",
+        "statistics": {
+            "branch_count": 4861,
+            "org_count": 3650,
+            "route_count": 14,
+            "rubric_count": 830
+        },
+        "type": "region"
+    },
+    {
+        "code": "zdvinsk",
+        "country_code": "ru",
+        "id": "180",
+        "name": "Здвинск",
+        "statistics": {
+            "branch_count": 422,
+            "org_count": 332,
+            "route_count": 9,
+            "rubric_count": 242
+        },
+        "type": "region"
+    },
+    {
+        "code": "ivanovo",
+        "country_code": "ru",
+        "id": "65",
+        "name": "Иваново",
+        "statistics": {
+            "branch_count": 19734,
+            "org_count": 13746,
+            "route_count": 69,
+            "rubric_count": 1330
+        },
+        "type": "region"
+    },
+    {
+        "code": "izhevsk",
+        "country_code": "ru",
+        "id": "41",
+        "name": "Ижевск",
+        "statistics": {
+            "branch_count": 40602,
+            "org_count": 25174,
+            "route_count": 166,
+            "rubric_count": 1416
+        },
+        "type": "region"
+    },
+    {
+        "code": "irkutsk",
+        "country_code": "ru",
+        "id": "11",
+        "name": "Иркутск",
+        "statistics": {
+            "branch_count": 66783,
+            "org_count": 42383,
+            "route_count": 283,
+            "rubric_count": 1503
+        },
+        "type": "region"
+    },
+    {
+        "code": "ishim",
+        "country_code": "ru",
+        "id": "205",
+        "name": "Ишим",
+        "statistics": {
+            "branch_count": 2143,
+            "org_count": 1726,
+            "route_count": 13,
+            "rubric_count": 758
+        },
+        "type": "region"
+    },
+    {
+        "code": "yoshkarola",
+        "country_code": "ru",
+        "id": "70",
+        "name": "Йошкар-Ола",
+        "statistics": {
+            "branch_count": 14790,
+            "org_count": 9075,
+            "route_count": 49,
+            "rubric_count": 1268
+        },
+        "type": "region"
+    },
+    {
+        "code": "minvody",
+        "country_code": "ru",
+        "id": "89",
+        "name": "КавМинВоды",
+        "statistics": {
+            "branch_count": 31028,
+            "org_count": 21032,
+            "route_count": 202,
+            "rubric_count": 1364
+        },
+        "type": "region"
+    },
+    {
+        "code": "kazan",
+        "country_code": "ru",
+        "id": "21",
+        "name": "Казань",
+        "statistics": {
+            "branch_count": 74785,
+            "org_count": 50527,
+            "route_count": 172,
+            "rubric_count": 1523
+        },
+        "type": "region"
+    },
+    {
+        "code": "kaliningrad",
+        "country_code": "ru",
+        "id": "40",
+        "name": "Калининград",
+        "statistics": {
+            "branch_count": 43106,
+            "org_count": 30769,
+            "route_count": 196,
+            "rubric_count": 1456
+        },
+        "type": "region"
+    },
+    {
+        "code": "kaluga",
+        "country_code": "ru",
+        "id": "61",
+        "name": "Калуга",
+        "statistics": {
+            "branch_count": 23774,
+            "org_count": 16698,
+            "route_count": 151,
+            "rubric_count": 1381
+        },
+        "type": "region"
+    },
+    {
+        "code": "k_uralskiy",
+        "country_code": "ru",
+        "id": "109",
+        "name": "Каменск-Уральский",
+        "statistics": {
+            "branch_count": 6796,
+            "org_count": 4001,
+            "route_count": 46,
+            "rubric_count": 1102
+        },
+        "type": "region"
+    },
+    {
+        "code": "kamyshin",
+        "country_code": "ru",
+        "id": "127",
+        "name": "Камышин",
+        "statistics": {
+            "branch_count": 3214,
+            "org_count": 2550,
+            "route_count": 22,
+            "rubric_count": 848
+        },
+        "type": "region"
+    },
+    {
+        "code": "karaganda",
+        "country_code": "kz",
+        "id": "84",
+        "name": "Караганда",
+        "statistics": {
+            "branch_count": 30572,
+            "org_count": 22177,
+            "route_count": 86,
+            "rubric_count": 1311
+        },
+        "type": "region"
+    },
+    {
+        "code": "karasuk",
+        "country_code": "ru",
+        "id": "181",
+        "name": "Карасук",
+        "statistics": {
+            "branch_count": 1345,
+            "org_count": 1160,
+            "route_count": 14,
+            "rubric_count": 531
+        },
+        "type": "region"
+    },
+    {
+        "code": "kargat",
+        "country_code": "ru",
+        "id": "182",
+        "name": "Каргат",
+        "statistics": {
+            "branch_count": 454,
+            "org_count": 375,
+            "route_count": 17,
+            "rubric_count": 274
+        },
+        "type": "region"
+    },
+    {
+        "code": "qatar",
+        "country_code": "qa",
+        "id": "234",
+        "name": "Катар",
+        "statistics": {
+            "branch_count": 43126,
+            "org_count": 40191,
+            "route_count": 65,
+            "rubric_count": 599
+        },
+        "type": "region"
+    },
+    {
+        "code": "kemerovo",
+        "country_code": "ru",
+        "id": "5",
+        "name": "Кемерово",
+        "statistics": {
+            "branch_count": 31043,
+            "org_count": 18200,
+            "route_count": 153,
+            "rubric_count": 1436
+        },
+        "type": "region"
+    },
+    {
+        "code": "kirov",
+        "country_code": "ru",
+        "id": "58",
+        "name": "Киров",
+        "statistics": {
+            "branch_count": 30450,
+            "org_count": 18145,
+            "route_count": 120,
+            "rubric_count": 1433
+        },
+        "type": "region"
+    },
+    {
+        "code": "kovrov",
+        "country_code": "ru",
+        "id": "129",
+        "name": "Ковров",
+        "statistics": {
+            "branch_count": 4109,
+            "org_count": 3119,
+            "route_count": 30,
+            "rubric_count": 930
+        },
+        "type": "region"
+    },
+    {
+        "code": "kogalym",
+        "country_code": "ru",
+        "id": "207",
+        "name": "Когалым",
+        "statistics": {
+            "branch_count": 1508,
+            "org_count": 1238,
+            "route_count": 6,
+            "rubric_count": 748
+        },
+        "type": "region"
+    },
+    {
+        "code": "kokshetau",
+        "country_code": "kz",
+        "id": "201",
+        "name": "Кокшетау",
+        "statistics": {
+            "branch_count": 17203,
+            "org_count": 13273,
+            "route_count": 49,
+            "rubric_count": 1162
+        },
+        "type": "region"
+    },
+    {
+        "code": "komsomolsk",
+        "country_code": "ru",
+        "id": "94",
+        "name": "Комсомольск-на-Амуре",
+        "statistics": {
+            "branch_count": 11488,
+            "org_count": 8556,
+            "route_count": 48,
+            "rubric_count": 1247
+        },
+        "type": "region"
+    },
+    {
+        "code": "kostanay",
+        "country_code": "kz",
+        "id": "203",
+        "name": "Костанай",
+        "statistics": {
+            "branch_count": 18961,
+            "org_count": 14624,
+            "route_count": 57,
+            "rubric_count": 1228
+        },
+        "type": "region"
+    },
+    {
+        "code": "kostroma",
+        "country_code": "ru",
+        "id": "34",
+        "name": "Кострома",
+        "statistics": {
+            "branch_count": 13729,
+            "org_count": 10087,
+            "route_count": 60,
+            "rubric_count": 1290
+        },
+        "type": "region"
+    },
+    {
+        "code": "kotchki",
+        "country_code": "ru",
+        "id": "183",
+        "name": "Кочки",
+        "statistics": {
+            "branch_count": 389,
+            "org_count": 347,
+            "route_count": 9,
+            "rubric_count": 256
+        },
+        "type": "region"
+    },
+    {
+        "code": "krasnodar",
+        "country_code": "ru",
+        "id": "23",
+        "name": "Краснодар",
+        "statistics": {
+            "branch_count": 104271,
+            "org_count": 71071,
+            "route_count": 258,
+            "rubric_count": 1515
+        },
+        "type": "region"
+    },
+    {
+        "code": "krasnozerskoe",
+        "country_code": "ru",
+        "id": "184",
+        "name": "Краснозёрское",
+        "statistics": {
+            "branch_count": 960,
+            "org_count": 731,
+            "route_count": 18,
+            "rubric_count": 385
+        },
+        "type": "region"
+    },
+    {
+        "code": "krasnoyarsk",
+        "country_code": "ru",
+        "id": "7",
+        "name": "Красноярск",
+        "statistics": {
+            "branch_count": 87835,
+            "org_count": 60955,
+            "route_count": 434,
+            "rubric_count": 1521
+        },
+        "type": "region"
+    },
+    {
+        "code": "crimea",
+        "country_code": "ru",
+        "id": "174",
+        "name": "Крым",
+        "statistics": {
+            "branch_count": 74485,
+            "org_count": 52069,
+            "route_count": 696,
+            "rubric_count": 1412
+        },
+        "type": "region"
+    },
+    {
+        "code": "kuwait",
+        "country_code": "kw",
+        "id": "235",
+        "name": "Кувейт",
+        "statistics": {
+            "branch_count": 3,
+            "org_count": 3,
+            "route_count": 0,
+            "rubric_count": 38
+        },
+        "type": "region"
+    },
+    {
+        "code": "kuibyshev",
+        "country_code": "ru",
+        "id": "185",
+        "name": "Куйбышев",
+        "statistics": {
+            "branch_count": 1671,
+            "org_count": 1414,
+            "route_count": 45,
+            "rubric_count": 626
+        },
+        "type": "region"
+    },
+    {
+        "code": "kumertau",
+        "country_code": "ru",
+        "id": "210",
+        "name": "Кумертау",
+        "statistics": {
+            "branch_count": 1868,
+            "org_count": 1479,
+            "route_count": 7,
+            "rubric_count": 637
+        },
+        "type": "region"
+    },
+    {
+        "code": "kupino",
+        "country_code": "ru",
+        "id": "186",
+        "name": "Купино",
+        "statistics": {
+            "branch_count": 774,
+            "org_count": 650,
+            "route_count": 13,
+            "rubric_count": 350
+        },
+        "type": "region"
+    },
+    {
+        "code": "kurgan",
+        "country_code": "ru",
+        "id": "10",
+        "name": "Курган",
+        "statistics": {
+            "branch_count": 15155,
+            "org_count": 9718,
+            "route_count": 88,
+            "rubric_count": 1319
+        },
+        "type": "region"
+    },
+    {
+        "code": "kursk",
+        "country_code": "ru",
+        "id": "73",
+        "name": "Курск",
+        "statistics": {
+            "branch_count": 17938,
+            "org_count": 11823,
+            "route_count": 89,
+            "rubric_count": 1303
+        },
+        "type": "region"
+    },
+    {
+        "code": "kyzylorda",
+        "country_code": "kz",
+        "id": "240",
+        "name": "Кызылорда",
+        "statistics": {
+            "branch_count": 11537,
+            "org_count": 8875,
+            "route_count": 32,
+            "rubric_count": 1012
+        },
+        "type": "region"
+    },
+    {
+        "code": "bishkek",
+        "country_code": "kg",
+        "id": "112",
+        "name": "Кыргызстан",
+        "statistics": {
+            "branch_count": 98843,
+            "org_count": 66355,
+            "route_count": 507,
+            "rubric_count": 1368
+        },
+        "type": "region"
+    },
+    {
+        "code": "kyshtovka",
+        "country_code": "ru",
+        "id": "187",
+        "name": "Кыштовка",
+        "statistics": {
+            "branch_count": 318,
+            "org_count": 265,
+            "route_count": 8,
+            "rubric_count": 192
+        },
+        "type": "region"
+    },
+    {
+        "code": "lenkuz",
+        "country_code": "ru",
+        "id": "86",
+        "name": "Ленинск-Кузнецкий",
+        "statistics": {
+            "branch_count": 11589,
+            "org_count": 6601,
+            "route_count": 98,
+            "rubric_count": 1095
+        },
+        "type": "region"
+    },
+    {
+        "code": "lipetsk",
+        "country_code": "ru",
+        "id": "56",
+        "name": "Липецк",
+        "statistics": {
+            "branch_count": 25777,
+            "org_count": 18147,
+            "route_count": 127,
+            "rubric_count": 1363
+        },
+        "type": "region"
+    },
+    {
+        "code": "magadan",
+        "country_code": "ru",
+        "id": "158",
+        "name": "Магадан",
+        "statistics": {
+            "branch_count": 3530,
+            "org_count": 2830,
+            "route_count": 22,
+            "rubric_count": 914
+        },
+        "type": "region"
+    },
+    {
+        "code": "magnitogorsk",
+        "country_code": "ru",
+        "id": "26",
+        "name": "Магнитогорск",
+        "statistics": {
+            "branch_count": 18530,
+            "org_count": 12871,
+            "route_count": 104,
+            "rubric_count": 1339
+        },
+        "type": "region"
+    },
+    {
+        "code": "maikop",
+        "country_code": "ru",
+        "id": "131",
+        "name": "Майкоп",
+        "statistics": {
+            "branch_count": 13330,
+            "org_count": 9905,
+            "route_count": 99,
+            "rubric_count": 1154
+        },
+        "type": "region"
+    },
+    {
+        "code": "makhachkala",
+        "country_code": "ru",
+        "id": "113",
+        "name": "Махачкала",
+        "statistics": {
+            "branch_count": 46789,
+            "org_count": 35451,
+            "route_count": 141,
+            "rubric_count": 1346
+        },
+        "type": "region"
+    },
+    {
+        "code": "medina",
+        "country_code": "sa",
+        "id": "219",
+        "name": "Медина",
+        "statistics": {
+            "branch_count": 1,
+            "org_count": 1,
+            "route_count": 0,
+            "rubric_count": 35
+        },
+        "type": "region"
+    },
+    {
+        "code": "mekka",
+        "country_code": "sa",
+        "id": "218",
+        "name": "Мекка",
+        "statistics": {
+            "branch_count": 1,
+            "org_count": 1,
+            "route_count": 0,
+            "rubric_count": 36
+        },
+        "type": "region"
+    },
+    {
+        "code": "miass",
+        "country_code": "ru",
+        "id": "87",
+        "name": "Миасс и Златоуст",
+        "statistics": {
+            "branch_count": 26768,
+            "org_count": 19701,
+            "route_count": 285,
+            "rubric_count": 1338
+        },
+        "type": "region"
+    },
+    {
+        "code": "minsk",
+        "country_code": "by",
+        "id": "217",
+        "name": "Минск",
+        "statistics": {
+            "branch_count": 67089,
+            "org_count": 34410,
+            "route_count": 634,
+            "rubric_count": 1448
+        },
+        "type": "region"
+    },
+    {
+        "code": "michurinsk",
+        "country_code": "ru",
+        "id": "245",
+        "name": "Мичуринск",
+        "statistics": {
+            "branch_count": 2312,
+            "org_count": 1931,
+            "route_count": 16,
+            "rubric_count": 667
+        },
+        "type": "region"
+    },
+    {
+        "code": "moscow",
+        "country_code": "ru",
+        "id": "32",
+        "name": "Москва",
+        "statistics": {
+            "branch_count": 785281,
+            "org_count": 471745,
+            "route_count": 3323,
+            "rubric_count": 1640
+        },
+        "type": "region"
+    },
+    {
+        "code": "moscow_region",
+        "country_code": "ru",
+        "id": "241",
+        "name": "Московская область",
+        "statistics": {
+            "branch_count": 64394,
+            "org_count": 45843,
+            "route_count": 810,
+            "rubric_count": 1423
+        },
+        "type": "region"
+    },
+    {
+        "code": "murmansk",
+        "country_code": "ru",
+        "id": "96",
+        "name": "Мурманская область",
+        "statistics": {
+            "branch_count": 25171,
+            "org_count": 14374,
+            "route_count": 208,
+            "rubric_count": 1335
+        },
+        "type": "region"
+    },
+    {
+        "code": "murom",
+        "country_code": "ru",
+        "id": "132",
+        "name": "Муром",
+        "statistics": {
+            "branch_count": 4163,
+            "org_count": 3099,
+            "route_count": 30,
+            "rubric_count": 917
+        },
+        "type": "region"
+    },
+    {
+        "code": "nabchelny",
+        "country_code": "ru",
+        "id": "29",
+        "name": "Набережные Челны",
+        "statistics": {
+            "branch_count": 32537,
+            "org_count": 22324,
+            "route_count": 61,
+            "rubric_count": 1397
+        },
+        "type": "region"
+    },
+    {
+        "code": "najran",
+        "country_code": "sa",
+        "id": "228",
+        "name": "Наджран",
+        "statistics": {
+            "branch_count": 1,
+            "org_count": 1,
+            "route_count": 0,
+            "rubric_count": 32
+        },
+        "type": "region"
+    },
+    {
+        "code": "nazran",
+        "country_code": "ru",
+        "id": "154",
+        "name": "Назрань",
+        "statistics": {
+            "branch_count": 2456,
+            "org_count": 2083,
+            "route_count": 18,
+            "rubric_count": 711
+        },
+        "type": "region"
+    },
+    {
+        "code": "nalchik",
+        "country_code": "ru",
+        "id": "134",
+        "name": "Нальчик",
+        "statistics": {
+            "branch_count": 12593,
+            "org_count": 9999,
+            "route_count": 85,
+            "rubric_count": 1119
+        },
+        "type": "region"
+    },
+    {
+        "code": "naryanmar",
+        "country_code": "ru",
+        "id": "159",
+        "name": "Нарьян-Мар",
+        "statistics": {
+            "branch_count": 1278,
+            "org_count": 1080,
+            "route_count": 10,
+            "rubric_count": 591
+        },
+        "type": "region"
+    },
+    {
+        "code": "nahodka",
+        "country_code": "ru",
+        "id": "82",
+        "name": "Находка",
+        "statistics": {
+            "branch_count": 8079,
+            "org_count": 6483,
+            "route_count": 22,
+            "rubric_count": 1146
+        },
+        "type": "region"
+    },
+    {
+        "code": "nevinnomyssk",
+        "country_code": "ru",
+        "id": "135",
+        "name": "Невинномысск",
+        "statistics": {
+            "branch_count": 3716,
+            "org_count": 3023,
+            "route_count": 32,
+            "rubric_count": 914
+        },
+        "type": "region"
+    },
+    {
+        "code": "neom",
+        "country_code": "sa",
+        "id": "250",
+        "name": "Неом",
+        "statistics": {
+            "branch_count": 37,
+            "org_count": 37,
+            "route_count": 6,
+            "rubric_count": 55
+        },
+        "type": "region"
+    },
+    {
+        "code": "nizhnevartovsk",
+        "country_code": "ru",
+        "id": "12",
+        "name": "Нижневартовск",
+        "statistics": {
+            "branch_count": 16053,
+            "org_count": 11764,
+            "route_count": 48,
+            "rubric_count": 1270
+        },
+        "type": "region"
+    },
+    {
+        "code": "n_novgorod",
+        "country_code": "ru",
+        "id": "19",
+        "name": "Нижний Новгород",
+        "statistics": {
+            "branch_count": 88649,
+            "org_count": 53056,
+            "route_count": 453,
+            "rubric_count": 1516
+        },
+        "type": "region"
+    },
+    {
+        "code": "ntagil",
+        "country_code": "ru",
+        "id": "45",
+        "name": "Нижний Тагил",
+        "statistics": {
+            "branch_count": 13709,
+            "org_count": 9384,
+            "route_count": 120,
+            "rubric_count": 1280
+        },
+        "type": "region"
+    },
+    {
+        "code": "novokuznetsk",
+        "country_code": "ru",
+        "id": "6",
+        "name": "Новокузнецк",
+        "statistics": {
+            "branch_count": 38425,
+            "org_count": 20847,
+            "route_count": 250,
+            "rubric_count": 1399
+        },
+        "type": "region"
+    },
+    {
+        "code": "novorossiysk",
+        "country_code": "ru",
+        "id": "74",
+        "name": "Новороссийск",
+        "statistics": {
+            "branch_count": 43762,
+            "org_count": 30801,
+            "route_count": 182,
+            "rubric_count": 1404
+        },
+        "type": "region"
+    },
+    {
+        "code": "novosibirsk",
+        "country_code": "ru",
+        "id": "1",
+        "name": "Новосибирск",
+        "statistics": {
+            "branch_count": 130375,
+            "org_count": 86818,
+            "route_count": 525,
+            "rubric_count": 1565
+        },
+        "type": "region"
+    },
+    {
+        "code": "novocherkassk",
+        "country_code": "ru",
+        "id": "137",
+        "name": "Новочеркасск",
+        "statistics": {
+            "branch_count": 5441,
+            "org_count": 4063,
+            "route_count": 40,
+            "rubric_count": 983
+        },
+        "type": "region"
+    },
+    {
+        "code": "novoshakhtinsk",
+        "country_code": "ru",
+        "id": "138",
+        "name": "Новошахтинск",
+        "statistics": {
+            "branch_count": 2076,
+            "org_count": 1587,
+            "route_count": 37,
+            "rubric_count": 659
+        },
+        "type": "region"
+    },
+    {
+        "code": "n_urengoy",
+        "country_code": "ru",
+        "id": "139",
+        "name": "Новый Уренгой",
+        "statistics": {
+            "branch_count": 4364,
+            "org_count": 3368,
+            "route_count": 13,
+            "rubric_count": 999
+        },
+        "type": "region"
+    },
+    {
+        "code": "norilsk",
+        "country_code": "ru",
+        "id": "76",
+        "name": "Норильск",
+        "statistics": {
+            "branch_count": 7636,
+            "org_count": 4336,
+            "route_count": 35,
+            "rubric_count": 1093
+        },
+        "type": "region"
+    },
+    {
+        "code": "noyabrsk",
+        "country_code": "ru",
+        "id": "103",
+        "name": "Ноябрьск",
+        "statistics": {
+            "branch_count": 4559,
+            "org_count": 3548,
+            "route_count": 22,
+            "rubric_count": 1047
+        },
+        "type": "region"
+    },
+    {
+        "code": "nyagan",
+        "country_code": "ru",
+        "id": "202",
+        "name": "Нягань",
+        "statistics": {
+            "branch_count": 1768,
+            "org_count": 1488,
+            "route_count": 12,
+            "rubric_count": 717
+        },
+        "type": "region"
+    },
+    {
+        "code": "omsk",
+        "country_code": "ru",
+        "id": "2",
+        "name": "Омск",
+        "statistics": {
+            "branch_count": 70054,
+            "org_count": 46858,
+            "route_count": 500,
+            "rubric_count": 1494
+        },
+        "type": "region"
+    },
+    {
+        "code": "orenburg",
+        "country_code": "ru",
+        "id": "48",
+        "name": "Оренбург",
+        "statistics": {
+            "branch_count": 29019,
+            "org_count": 18828,
+            "route_count": 79,
+            "rubric_count": 1409
+        },
+        "type": "region"
+    },
+    {
+        "code": "orsk",
+        "country_code": "ru",
+        "id": "142",
+        "name": "Орск",
+        "statistics": {
+            "branch_count": 6600,
+            "org_count": 4989,
+            "route_count": 33,
+            "rubric_count": 1064
+        },
+        "type": "region"
+    },
+    {
+        "code": "orel",
+        "country_code": "ru",
+        "id": "71",
+        "name": "Орёл",
+        "statistics": {
+            "branch_count": 11890,
+            "org_count": 8128,
+            "route_count": 85,
+            "rubric_count": 1235
+        },
+        "type": "region"
+    },
+    {
+        "code": "pavlodar",
+        "country_code": "kz",
+        "id": "111",
+        "name": "Павлодар",
+        "statistics": {
+            "branch_count": 23571,
+            "org_count": 14324,
+            "route_count": 63,
+            "rubric_count": 1261
+        },
+        "type": "region"
+    },
+    {
+        "code": "padova",
+        "country_code": "it",
+        "id": "66",
+        "name": "Падуя",
+        "statistics": {
+            "branch_count": 48128,
+            "org_count": 35067,
+            "route_count": 54,
+            "rubric_count": 1016
+        },
+        "type": "region"
+    },
+    {
+        "code": "penza",
+        "country_code": "ru",
+        "id": "42",
+        "name": "Пенза",
+        "statistics": {
+            "branch_count": 27122,
+            "org_count": 18478,
+            "route_count": 122,
+            "rubric_count": 1426
+        },
+        "type": "region"
+    },
+    {
+        "code": "perm",
+        "country_code": "ru",
+        "id": "16",
+        "name": "Пермь",
+        "statistics": {
+            "branch_count": 77299,
+            "org_count": 49789,
+            "route_count": 476,
+            "rubric_count": 1507
+        },
+        "type": "region"
+    },
+    {
+        "code": "petrozavodsk",
+        "country_code": "ru",
+        "id": "80",
+        "name": "Петрозаводск",
+        "statistics": {
+            "branch_count": 13209,
+            "org_count": 9322,
+            "route_count": 61,
+            "rubric_count": 1326
+        },
+        "type": "region"
+    },
+    {
+        "code": "petropavlovsk",
+        "country_code": "kz",
+        "id": "170",
+        "name": "Петропавловск",
+        "statistics": {
+            "branch_count": 11299,
+            "org_count": 7946,
+            "route_count": 22,
+            "rubric_count": 1135
+        },
+        "type": "region"
+    },
+    {
+        "code": "p_kamchatskiy",
+        "country_code": "ru",
+        "id": "95",
+        "name": "Петропавловск-Камчатский",
+        "statistics": {
+            "branch_count": 15213,
+            "org_count": 11864,
+            "route_count": 75,
+            "rubric_count": 1297
+        },
+        "type": "region"
+    },
+    {
+        "code": "pikalevo",
+        "country_code": "ru",
+        "id": "213",
+        "name": "Пикалево",
+        "statistics": {
+            "branch_count": 565,
+            "org_count": 488,
+            "route_count": 13,
+            "rubric_count": 429
+        },
+        "type": "region"
+    },
+    {
+        "code": "praha",
+        "country_code": "cz",
+        "id": "92",
+        "name": "Прага",
+        "statistics": {
+            "branch_count": 82535,
+            "org_count": 64051,
+            "route_count": 343,
+            "rubric_count": 1132
+        },
+        "type": "region"
+    },
+    {
+        "code": "pskov",
+        "country_code": "ru",
+        "id": "90",
+        "name": "Псков",
+        "statistics": {
+            "branch_count": 10462,
+            "org_count": 7517,
+            "route_count": 52,
+            "rubric_count": 1258
+        },
+        "type": "region"
+    },
+    {
+        "code": "gornoaltaysk",
+        "country_code": "ru",
+        "id": "27",
+        "name": "Республика Алтай",
+        "statistics": {
+            "branch_count": 14028,
+            "org_count": 11775,
+            "route_count": 69,
+            "rubric_count": 1162
+        },
+        "type": "region"
+    },
+    {
+        "code": "rostov",
+        "country_code": "ru",
+        "id": "24",
+        "name": "Ростов-на-Дону",
+        "statistics": {
+            "branch_count": 61698,
+            "org_count": 38584,
+            "route_count": 244,
+            "rubric_count": 1455
+        },
+        "type": "region"
+    },
+    {
+        "code": "rubtsovsk",
+        "country_code": "ru",
+        "id": "143",
+        "name": "Рубцовск",
+        "statistics": {
+            "branch_count": 4118,
+            "org_count": 3164,
+            "route_count": 10,
+            "rubric_count": 899
+        },
+        "type": "region"
+    },
+    {
+        "code": "rybinsk",
+        "country_code": "ru",
+        "id": "144",
+        "name": "Рыбинск",
+        "statistics": {
+            "branch_count": 6041,
+            "org_count": 4547,
+            "route_count": 33,
+            "rubric_count": 1021
+        },
+        "type": "region"
+    },
+    {
+        "code": "ryazan",
+        "country_code": "ru",
+        "id": "44",
+        "name": "Рязань",
+        "statistics": {
+            "branch_count": 26415,
+            "org_count": 16273,
+            "route_count": 148,
+            "rubric_count": 1397
+        },
+        "type": "region"
+    },
+    {
+        "code": "salekhard",
+        "country_code": "ru",
+        "id": "160",
+        "name": "Салехард",
+        "statistics": {
+            "branch_count": 2220,
+            "org_count": 1891,
+            "route_count": 9,
+            "rubric_count": 770
+        },
+        "type": "region"
+    },
+    {
+        "code": "samara",
+        "country_code": "ru",
+        "id": "18",
+        "name": "Самара",
+        "statistics": {
+            "branch_count": 74826,
+            "org_count": 50133,
+            "route_count": 312,
+            "rubric_count": 1518
+        },
+        "type": "region"
+    },
+    {
+        "code": "samarkand",
+        "country_code": "uz",
+        "id": "247",
+        "name": "Самарканд",
+        "statistics": {
+            "branch_count": 22312,
+            "org_count": 19310,
+            "route_count": 44,
+            "rubric_count": 982
+        },
+        "type": "region"
+    },
+    {
+        "code": "spb",
+        "country_code": "ru",
+        "id": "38",
+        "name": "Санкт-Петербург",
+        "statistics": {
+            "branch_count": 292066,
+            "org_count": 171917,
+            "route_count": 1225,
+            "rubric_count": 1603
+        },
+        "type": "region"
+    },
+    {
+        "code": "santiago",
+        "country_code": "cl",
+        "id": "101",
+        "name": "Сантьяго",
+        "statistics": {
+            "branch_count": 79016,
+            "org_count": 61830,
+            "route_count": 382,
+            "rubric_count": 1128
+        },
+        "type": "region"
+    },
+    {
+        "code": "saransk",
+        "country_code": "ru",
+        "id": "85",
+        "name": "Саранск",
+        "statistics": {
+            "branch_count": 11927,
+            "org_count": 7510,
+            "route_count": 85,
+            "rubric_count": 1225
+        },
+        "type": "region"
+    },
+    {
+        "code": "saratov",
+        "country_code": "ru",
+        "id": "43",
+        "name": "Саратов",
+        "statistics": {
+            "branch_count": 44406,
+            "org_count": 29646,
+            "route_count": 230,
+            "rubric_count": 1447
+        },
+        "type": "region"
+    },
+    {
+        "code": "severnoe",
+        "country_code": "ru",
+        "id": "188",
+        "name": "Северное",
+        "statistics": {
+            "branch_count": 254,
+            "org_count": 222,
+            "route_count": 9,
+            "rubric_count": 191
+        },
+        "type": "region"
+    },
+    {
+        "code": "semey",
+        "country_code": "kz",
+        "id": "169",
+        "name": "Семей",
+        "statistics": {
+            "branch_count": 14847,
+            "org_count": 11751,
+            "route_count": 41,
+            "rubric_count": 1148
+        },
+        "type": "region"
+    },
+    {
+        "code": "slantsy",
+        "country_code": "ru",
+        "id": "215",
+        "name": "Сланцы",
+        "statistics": {
+            "branch_count": 880,
+            "org_count": 755,
+            "route_count": 10,
+            "rubric_count": 484
+        },
+        "type": "region"
+    },
+    {
+        "code": "smolensk",
+        "country_code": "ru",
+        "id": "63",
+        "name": "Смоленск",
+        "statistics": {
+            "branch_count": 16577,
+            "org_count": 9977,
+            "route_count": 96,
+            "rubric_count": 1290
+        },
+        "type": "region"
+    },
+    {
+        "code": "sochi",
+        "country_code": "ru",
+        "id": "30",
+        "name": "Сочи",
+        "statistics": {
+            "branch_count": 50376,
+            "org_count": 38184,
+            "route_count": 306,
+            "rubric_count": 1425
+        },
+        "type": "region"
+    },
+    {
+        "code": "stavropol",
+        "country_code": "ru",
+        "id": "57",
+        "name": "Ставрополь",
+        "statistics": {
+            "branch_count": 30867,
+            "org_count": 22884,
+            "route_count": 88,
+            "rubric_count": 1360
+        },
+        "type": "region"
+    },
+    {
+        "code": "staroskol",
+        "country_code": "ru",
+        "id": "60",
+        "name": "Старый Оскол",
+        "statistics": {
+            "branch_count": 7534,
+            "org_count": 5666,
+            "route_count": 64,
+            "rubric_count": 1098
+        },
+        "type": "region"
+    },
+    {
+        "code": "sterlitamak",
+        "country_code": "ru",
+        "id": "54",
+        "name": "Стерлитамак",
+        "statistics": {
+            "branch_count": 17759,
+            "org_count": 10284,
+            "route_count": 99,
+            "rubric_count": 1270
+        },
+        "type": "region"
+    },
+    {
+        "code": "surgut",
+        "country_code": "ru",
+        "id": "39",
+        "name": "Сургут",
+        "statistics": {
+            "branch_count": 21647,
+            "org_count": 15513,
+            "route_count": 68,
+            "rubric_count": 1369
+        },
+        "type": "region"
+    },
+    {
+        "code": "syktyvkar",
+        "country_code": "ru",
+        "id": "72",
+        "name": "Сыктывкар",
+        "statistics": {
+            "branch_count": 11724,
+            "org_count": 7776,
+            "route_count": 45,
+            "rubric_count": 1276
+        },
+        "type": "region"
+    },
+    {
+        "code": "syasstroy",
+        "country_code": "ru",
+        "id": "214",
+        "name": "Сясьстрой",
+        "statistics": {
+            "branch_count": 333,
+            "org_count": 304,
+            "route_count": 1,
+            "rubric_count": 298
+        },
+        "type": "region"
+    },
+    {
+        "code": "tabuk",
+        "country_code": "sa",
+        "id": "224",
+        "name": "Табук",
+        "statistics": {
+            "branch_count": 1,
+            "org_count": 1,
+            "route_count": 0,
+            "rubric_count": 33
+        },
+        "type": "region"
+    },
+    {
+        "code": "taganrog",
+        "country_code": "ru",
+        "id": "116",
+        "name": "Таганрог",
+        "statistics": {
+            "branch_count": 9545,
+            "org_count": 6738,
+            "route_count": 53,
+            "rubric_count": 1146
+        },
+        "type": "region"
+    },
+    {
+        "code": "tambov",
+        "country_code": "ru",
+        "id": "81",
+        "name": "Тамбов",
+        "statistics": {
+            "branch_count": 16643,
+            "org_count": 10902,
+            "route_count": 121,
+            "rubric_count": 1309
+        },
+        "type": "region"
+    },
+    {
+        "code": "taraz",
+        "country_code": "kz",
+        "id": "221",
+        "name": "Тараз",
+        "statistics": {
+            "branch_count": 13724,
+            "org_count": 10420,
+            "route_count": 42,
+            "rubric_count": 1071
+        },
+        "type": "region"
+    },
+    {
+        "code": "tatarsk",
+        "country_code": "ru",
+        "id": "189",
+        "name": "Татарск",
+        "statistics": {
+            "branch_count": 1157,
+            "org_count": 934,
+            "route_count": 16,
+            "rubric_count": 422
+        },
+        "type": "region"
+    },
+    {
+        "code": "tashkent",
+        "country_code": "uz",
+        "id": "208",
+        "name": "Ташкент",
+        "statistics": {
+            "branch_count": 70608,
+            "org_count": 51877,
+            "route_count": 229,
+            "rubric_count": 1328
+        },
+        "type": "region"
+    },
+    {
+        "code": "tver",
+        "country_code": "ru",
+        "id": "47",
+        "name": "Тверь",
+        "statistics": {
+            "branch_count": 17305,
+            "org_count": 11291,
+            "route_count": 85,
+            "rubric_count": 1304
+        },
+        "type": "region"
+    },
+    {
+        "code": "tobolsk",
+        "country_code": "ru",
+        "id": "97",
+        "name": "Тобольск",
+        "statistics": {
+            "branch_count": 5294,
+            "org_count": 4237,
+            "route_count": 53,
+            "rubric_count": 1098
+        },
+        "type": "region"
+    },
+    {
+        "code": "togliatti",
+        "country_code": "ru",
+        "id": "22",
+        "name": "Тольятти",
+        "statistics": {
+            "branch_count": 40955,
+            "org_count": 27725,
+            "route_count": 185,
+            "rubric_count": 1420
+        },
+        "type": "region"
+    },
+    {
+        "code": "tomsk",
+        "country_code": "ru",
+        "id": "3",
+        "name": "Томск",
+        "statistics": {
+            "branch_count": 34966,
+            "org_count": 21981,
+            "route_count": 104,
+            "rubric_count": 1442
+        },
+        "type": "region"
+    },
+    {
+        "code": "tula",
+        "country_code": "ru",
+        "id": "36",
+        "name": "Тула",
+        "statistics": {
+            "branch_count": 41470,
+            "org_count": 25423,
+            "route_count": 336,
+            "rubric_count": 1417
+        },
+        "type": "region"
+    },
+    {
+        "code": "turkestan",
+        "country_code": "kz",
+        "id": "232",
+        "name": "Туркестан",
+        "statistics": {
+            "branch_count": 6323,
+            "org_count": 5166,
+            "route_count": 26,
+            "rubric_count": 840
+        },
+        "type": "region"
+    },
+    {
+        "code": "tyumen",
+        "country_code": "ru",
+        "id": "13",
+        "name": "Тюмень",
+        "statistics": {
+            "branch_count": 58291,
+            "org_count": 38634,
+            "route_count": 284,
+            "rubric_count": 1493
+        },
+        "type": "region"
+    },
+    {
+        "code": "ubinskoe",
+        "country_code": "ru",
+        "id": "190",
+        "name": "Убинское",
+        "statistics": {
+            "branch_count": 428,
+            "org_count": 345,
+            "route_count": 9,
+            "rubric_count": 217
+        },
+        "type": "region"
+    },
+    {
+        "code": "ulanude",
+        "country_code": "ru",
+        "id": "37",
+        "name": "Улан-Удэ",
+        "statistics": {
+            "branch_count": 30443,
+            "org_count": 19796,
+            "route_count": 127,
+            "rubric_count": 1424
+        },
+        "type": "region"
+    },
+    {
+        "code": "ulyanovsk",
+        "country_code": "ru",
+        "id": "55",
+        "name": "Ульяновск",
+        "statistics": {
+            "branch_count": 22710,
+            "org_count": 14635,
+            "route_count": 101,
+            "rubric_count": 1356
+        },
+        "type": "region"
+    },
+    {
+        "code": "uralsk",
+        "country_code": "kz",
+        "id": "162",
+        "name": "Уральск",
+        "statistics": {
+            "branch_count": 18216,
+            "org_count": 13233,
+            "route_count": 45,
+            "rubric_count": 1218
+        },
+        "type": "region"
+    },
+    {
+        "code": "ussuriysk",
+        "country_code": "ru",
+        "id": "83",
+        "name": "Уссурийск",
+        "statistics": {
+            "branch_count": 8663,
+            "org_count": 6166,
+            "route_count": 55,
+            "rubric_count": 1197
+        },
+        "type": "region"
+    },
+    {
+        "code": "ustkam",
+        "country_code": "kz",
+        "id": "91",
+        "name": "Усть-Каменогорск",
+        "statistics": {
+            "branch_count": 17176,
+            "org_count": 12783,
+            "route_count": 75,
+            "rubric_count": 1269
+        },
+        "type": "region"
+    },
+    {
+        "code": "ust_tarka",
+        "country_code": "ru",
+        "id": "191",
+        "name": "Усть-Тарка",
+        "statistics": {
+            "branch_count": 425,
+            "org_count": 352,
+            "route_count": 11,
+            "rubric_count": 243
+        },
+        "type": "region"
+    },
+    {
+        "code": "ufa",
+        "country_code": "ru",
+        "id": "17",
+        "name": "Уфа",
+        "statistics": {
+            "branch_count": 70719,
+            "org_count": 46533,
+            "route_count": 253,
+            "rubric_count": 1513
+        },
+        "type": "region"
+    },
+    {
+        "code": "ukhta",
+        "country_code": "ru",
+        "id": "204",
+        "name": "Ухта",
+        "statistics": {
+            "branch_count": 4653,
+            "org_count": 3176,
+            "route_count": 19,
+            "rubric_count": 1018
+        },
+        "type": "region"
+    },
+    {
+        "code": "khabarovsk",
+        "country_code": "ru",
+        "id": "35",
+        "name": "Хабаровск",
+        "statistics": {
+            "branch_count": 34173,
+            "org_count": 25135,
+            "route_count": 143,
+            "rubric_count": 1434
+        },
+        "type": "region"
+    },
+    {
+        "code": "hail",
+        "country_code": "sa",
+        "id": "225",
+        "name": "Хаиль",
+        "statistics": {
+            "branch_count": 1,
+            "org_count": 1,
+            "route_count": 0,
+            "rubric_count": 34
+        },
+        "type": "region"
+    },
+    {
+        "code": "kh_mansiysk",
+        "country_code": "ru",
+        "id": "150",
+        "name": "Ханты-Мансийск",
+        "statistics": {
+            "branch_count": 5204,
+            "org_count": 3668,
+            "route_count": 15,
+            "rubric_count": 1058
+        },
+        "type": "region"
+    },
+    {
+        "code": "khasavyurt",
+        "country_code": "ru",
+        "id": "151",
+        "name": "Хасавюрт",
+        "statistics": {
+            "branch_count": 2143,
+            "org_count": 1821,
+            "route_count": 8,
+            "rubric_count": 616
+        },
+        "type": "region"
+    },
+    {
+        "code": "chany",
+        "country_code": "ru",
+        "id": "192",
+        "name": "Чаны",
+        "statistics": {
+            "branch_count": 774,
+            "org_count": 674,
+            "route_count": 16,
+            "rubric_count": 327
+        },
+        "type": "region"
+    },
+    {
+        "code": "cheboksary",
+        "country_code": "ru",
+        "id": "53",
+        "name": "Чебоксары",
+        "statistics": {
+            "branch_count": 30606,
+            "org_count": 17490,
+            "route_count": 105,
+            "rubric_count": 1350
+        },
+        "type": "region"
+    },
+    {
+        "code": "chelyabinsk",
+        "country_code": "ru",
+        "id": "15",
+        "name": "Челябинск",
+        "statistics": {
+            "branch_count": 84708,
+            "org_count": 56358,
+            "route_count": 334,
+            "rubric_count": 1523
+        },
+        "type": "region"
+    },
+    {
+        "code": "cherkessk",
+        "country_code": "ru",
+        "id": "118",
+        "name": "Черкесск",
+        "statistics": {
+            "branch_count": 9179,
+            "org_count": 7643,
+            "route_count": 62,
+            "rubric_count": 1001
+        },
+        "type": "region"
+    },
+    {
+        "code": "chistoozernoe",
+        "country_code": "ru",
+        "id": "193",
+        "name": "Чистоозёрное",
+        "statistics": {
+            "branch_count": 522,
+            "org_count": 454,
+            "route_count": 14,
+            "rubric_count": 267
+        },
+        "type": "region"
+    },
+    {
+        "code": "chita",
+        "country_code": "ru",
+        "id": "64",
+        "name": "Чита",
+        "statistics": {
+            "branch_count": 17306,
+            "org_count": 11342,
+            "route_count": 66,
+            "rubric_count": 1323
+        },
+        "type": "region"
+    },
+    {
+        "code": "chulym",
+        "country_code": "ru",
+        "id": "166",
+        "name": "Чулым",
+        "statistics": {
+            "branch_count": 576,
+            "org_count": 511,
+            "route_count": 20,
+            "rubric_count": 303
+        },
+        "type": "region"
+    },
+    {
+        "code": "shakhty",
+        "country_code": "ru",
+        "id": "152",
+        "name": "Шахты",
+        "statistics": {
+            "branch_count": 6189,
+            "org_count": 4716,
+            "route_count": 61,
+            "rubric_count": 984
+        },
+        "type": "region"
+    },
+    {
+        "code": "sheregesh",
+        "country_code": "ru",
+        "id": "206",
+        "name": "Шерегеш",
+        "statistics": {
+            "branch_count": 3153,
+            "org_count": 2100,
+            "route_count": 49,
+            "rubric_count": 773
+        },
+        "type": "region"
+    },
+    {
+        "code": "shymkent",
+        "country_code": "kz",
+        "id": "161",
+        "name": "Шымкент",
+        "statistics": {
+            "branch_count": 53819,
+            "org_count": 44414,
+            "route_count": 84,
+            "rubric_count": 1323
+        },
+        "type": "region"
+    },
+    {
+        "code": "dammam",
+        "country_code": "sa",
+        "id": "220",
+        "name": "Эд-Даммам",
+        "statistics": {
+            "branch_count": 21,
+            "org_count": 21,
+            "route_count": 0,
+            "rubric_count": 39
+        },
+        "type": "region"
+    },
+    {
+        "code": "ekibastuz",
+        "country_code": "kz",
+        "id": "252",
+        "name": "Экибастуз",
+        "statistics": {
+            "branch_count": 4971,
+            "org_count": 3078,
+            "route_count": 8,
+            "rubric_count": 790
+        },
+        "type": "region"
+    },
+    {
+        "code": "elista",
+        "country_code": "ru",
+        "id": "153",
+        "name": "Элиста",
+        "statistics": {
+            "branch_count": 3819,
+            "org_count": 3112,
+            "route_count": 23,
+            "rubric_count": 836
+        },
+        "type": "region"
+    },
+    {
+        "code": "el_jouf",
+        "country_code": "sa",
+        "id": "230",
+        "name": "Эль Джауф",
+        "statistics": {
+            "branch_count": 1,
+            "org_count": 1,
+            "route_count": 0,
+            "rubric_count": 34
+        },
+        "type": "region"
+    },
+    {
+        "code": "qasim",
+        "country_code": "sa",
+        "id": "222",
+        "name": "Эль Касим",
+        "statistics": {
+            "branch_count": 1,
+            "org_count": 1,
+            "route_count": 0,
+            "rubric_count": 33
+        },
+        "type": "region"
+    },
+    {
+        "code": "hudud_al_shamaliya",
+        "country_code": "sa",
+        "id": "226",
+        "name": "Эль Худуд эш Шамалия",
+        "statistics": {
+            "branch_count": 1,
+            "org_count": 1,
+            "route_count": 0,
+            "rubric_count": 32
+        },
+        "type": "region"
+    },
+    {
+        "code": "el_baha",
+        "country_code": "sa",
+        "id": "229",
+        "name": "Эль-Баха",
+        "statistics": {
+            "branch_count": 1,
+            "org_count": 1,
+            "route_count": 0,
+            "rubric_count": 32
+        },
+        "type": "region"
+    },
+    {
+        "code": "yuzhnosakhalinsk",
+        "country_code": "ru",
+        "id": "88",
+        "name": "Южно-Сахалинск",
+        "statistics": {
+            "branch_count": 20384,
+            "org_count": 13066,
+            "route_count": 153,
+            "rubric_count": 1360
+        },
+        "type": "region"
+    },
+    {
+        "code": "yakutsk",
+        "country_code": "ru",
+        "id": "50",
+        "name": "Якутск",
+        "statistics": {
+            "branch_count": 24415,
+            "org_count": 16856,
+            "route_count": 37,
+            "rubric_count": 1365
+        },
+        "type": "region"
+    },
+    {
+        "code": "yaroslavl",
+        "country_code": "ru",
+        "id": "28",
+        "name": "Ярославль",
+        "statistics": {
+            "branch_count": 24401,
+            "org_count": 15389,
+            "route_count": 141,
+            "rubric_count": 1398
+        },
+        "type": "region"
+    }
+]

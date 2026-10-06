@@ -20,10 +20,12 @@ export const commands = {
 	format: ExportFormat,
 } | null, AppError>(__TAURI_INVOKE("export_results", { runId, format })),
 	health: () => __TAURI_INVOKE<HealthInfo>("health"),
-	save2gisApiKey: (key: string) => typedError<boolean, AppError>(__TAURI_INVOKE("save_2gis_api_key", { key })),
-	delete2gisApiKey: () => typedError<boolean, AppError>(__TAURI_INVOKE("delete_2gis_api_key")),
-	twoGisApiKeySaved: () => __TAURI_INVOKE<boolean>("two_gis_api_key_saved"),
-	twoGisCategories: (region: string, query: string) => typedError<CategorySuggestion[], AppError>(__TAURI_INVOKE("two_gis_categories", { region, query })),
+	saveParselabKey: (key: string) => typedError<boolean, AppError>(__TAURI_INVOKE("save_parselab_key", { key })),
+	deleteParselabKey: () => typedError<boolean, AppError>(__TAURI_INVOKE("delete_parselab_key")),
+	parselabKeySaved: () => __TAURI_INVOKE<boolean>("parselab_key_saved"),
+	catalogCitiesList: () => __TAURI_INVOKE<CatalogCity[]>("catalog_cities_list"),
+	catalogCityRubrics: (cityId: string) => __TAURI_INVOKE<CatalogRubric[]>("catalog_city_rubrics", { cityId }),
+	catalogCategoriesList: () => __TAURI_INVOKE<CatalogCategory[]>("catalog_categories_list"),
 	checkForUpdates: () => typedError<UpdateInfo, AppError>(__TAURI_INVOKE("check_for_updates")),
 	installUpdate: () => typedError<boolean, AppError>(__TAURI_INVOKE("install_update")),
 };
@@ -37,9 +39,23 @@ export type AppError = {
 	diagnostics?: ResponseDiagnostics | null,
 };
 
-export type CategorySuggestion = {
+export type CatalogCategory = {
 	id: string,
 	name: string,
+	rubrics: CatalogRubric[],
+};
+
+export type CatalogCity = {
+	id: string,
+	code: string,
+	name: string,
+	countryCode: string,
+};
+
+export type CatalogRubric = {
+	id: string,
+	name: string,
+	parentId: string | null,
 };
 
 export type CollectionJobInfo = {
@@ -183,7 +199,7 @@ export type SourceAttribution = {
 	collectedAt: string,
 };
 
-export type SourceKind = "twoGis" | "yell" | "zoon" | "rusprofile";
+export type SourceKind = "twoGis";
 
 export type UpdateInfo = {
 	currentVersion: string,
@@ -200,3 +216,4 @@ async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; dat
         return { status: "error", error: e as any };
     }
 }
+

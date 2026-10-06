@@ -11,17 +11,16 @@ use tauri::{Manager, Wry};
 use tauri_specta::{Builder, collect_commands};
 use twogis_application::ApplicationService;
 use twogis_domain::AppError;
-use twogis_provider::TwoGisHtmlProvider;
+use twogis_provider::parselab::ParselabProvider;
 use twogis_provider_core::DirectoryProvider;
-use twogis_provider_public_catalogs::{RusprofileHtmlProvider, YellHtmlProvider, ZoonHtmlProvider};
 use twogis_storage_sqlite::SqliteStore;
 
 use crate::{
     commands::{
-        cancel_search, delete_2gis_api_key, export_results, health, pause_provider,
+        cancel_search, catalog_categories_list, catalog_cities_list, catalog_city_rubrics,
+        delete_parselab_key, export_results, health, parselab_key_saved, pause_provider,
         recent_collection_jobs, recent_results, recent_runs, results_for_run, results_for_run_page,
-        resume_provider, resume_search, save_2gis_api_key, start_search, two_gis_api_key_saved,
-        two_gis_categories,
+        resume_provider, resume_search, save_parselab_key, start_search,
     },
     state::AppState,
     updater::{check_for_updates, install_update},
@@ -41,10 +40,12 @@ fn specta_builder() -> Builder<Wry> {
         results_for_run_page,
         export_results,
         health,
-        save_2gis_api_key,
-        delete_2gis_api_key,
-        two_gis_api_key_saved,
-        two_gis_categories,
+        save_parselab_key,
+        delete_parselab_key,
+        parselab_key_saved,
+        catalog_cities_list,
+        catalog_city_rubrics,
+        catalog_categories_list,
         check_for_updates,
         install_update
     ])
@@ -55,7 +56,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let builder = specta_builder();
 
     #[cfg(debug_assertions)]
-    builder.export(Typescript::default(), "../src/bindings.ts")?;
+    builder.export(
+        Typescript::default(),
+        concat!(env!("CARGO_MANIFEST_DIR"), "/../src/bindings.ts"),
+    )?;
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -69,29 +73,24 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             let db_path = app_data.join("lead-aggregator.db");
             migrate_legacy_database(&app_data, &db_path)?;
 
-            let api_key = credentials::load_2gis_api_key().unwrap_or_default();
-            let api_key_state = Arc::new(std::sync::RwLock::new(api_key));
+            let license_key = credentials::load_parselab_key().unwrap_or_default();
+            let license_key_state = Arc::new(std::sync::RwLock::new(license_key));
 
-            let two_gis_provider = Arc::new(
-                TwoGisHtmlProvider::new()
+            let parselab_provider = Arc::new(
+                ParselabProvider::new()
                     .map_err(as_setup_error)?
-                    .with_api_key_state(api_key_state.clone()),
+                    .with_license_key_state(license_key_state.clone()),
             );
-            let providers: Vec<Arc<dyn DirectoryProvider>> = vec![
-                two_gis_provider.clone(),
-                Arc::new(YellHtmlProvider::new().map_err(as_setup_error)?),
-                Arc::new(ZoonHtmlProvider::new().map_err(as_setup_error)?),
-                Arc::new(RusprofileHtmlProvider::new().map_err(as_setup_error)?),
-            ];
+            let providers: Vec<Arc<dyn DirectoryProvider>> = vec![parselab_provider.clone()];
             let store = tauri::async_runtime::block_on(SqliteStore::connect(&db_path))
                 .map_err(as_setup_error)?;
             let service = Arc::new(ApplicationService::new(providers, store));
             app.manage(AppState {
                 app: handle,
                 service,
-                two_gis_provider,
+                parselab_provider,
                 cancellation: tokio::sync::Mutex::new(None),
-                api_key_state,
+                license_key_state,
             });
             Ok(())
         })

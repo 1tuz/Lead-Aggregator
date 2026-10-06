@@ -2,34 +2,32 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use thiserror::Error;
 
+mod catalog;
 mod collection;
+#[path = "secrets_data.rs"]
+mod sealed;
+mod secrets;
+pub use catalog::*;
 pub use collection::*;
+pub use sealed::{DB_EXPORT_HOST, KEY_CHECK_PATH, KEY_USER_SUFFIX, KEY_VALIDATE_SUFFIX};
+pub use secrets::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub enum SourceKind {
     TwoGis,
-    Yell,
-    Zoon,
-    Rusprofile,
 }
 
 impl SourceKind {
     pub const fn id(self) -> &'static str {
         match self {
             Self::TwoGis => "2gis",
-            Self::Yell => "yell",
-            Self::Zoon => "zoon",
-            Self::Rusprofile => "rusprofile",
         }
     }
 
     pub const fn label(self) -> &'static str {
         match self {
             Self::TwoGis => "2GIS",
-            Self::Yell => "Yell",
-            Self::Zoon => "Zoon",
-            Self::Rusprofile => "Rusprofile",
         }
     }
 }
@@ -66,7 +64,7 @@ impl Default for SearchRequest {
             max_results: 100,
             max_pages: 5,
             concurrency: 1,
-            request_delay_ms: 1_500,
+            request_delay_ms: 0,
             sources: default_sources(),
             regions: Vec::new(),
             provider_configs: Vec::new(),
@@ -111,9 +109,9 @@ impl SearchRequest {
         if !(1..=8).contains(&self.concurrency) {
             return Err(AppError::validation("concurrency must be between 1 and 8"));
         }
-        if self.request_delay_ms < 250 {
+        if self.request_delay_ms > 10_000 {
             return Err(AppError::validation(
-                "requestDelayMs must be at least 250ms",
+                "requestDelayMs must be at most 10000ms",
             ));
         }
         if self.sources.is_empty() {

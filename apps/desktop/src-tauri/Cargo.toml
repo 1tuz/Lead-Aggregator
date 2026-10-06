@@ -29,7 +29,6 @@ twogis-application = { path = "../../../crates/application" }
 twogis-domain = { path = "../../../crates/domain" }
 twogis-provider = { path = "../../../crates/provider-2gis" }
 twogis-provider-core = { path = "../../../crates/provider-core" }
-twogis-provider-public-catalogs = { path = "../../../crates/provider-public-catalogs" }
 twogis-storage-sqlite = { path = "../../../crates/storage-sqlite" }
 
 [lints]

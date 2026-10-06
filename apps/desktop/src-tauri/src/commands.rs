@@ -14,53 +14,67 @@ use crate::state::AppState;
 
 #[tauri::command]
 #[specta::specta]
-pub fn save_2gis_api_key(state: State<'_, AppState>, key: String) -> Result<bool, AppError> {
+pub async fn save_parselab_key(state: State<'_, AppState>, key: String) -> Result<bool, AppError> {
     let key = key.trim();
-    if !(8..=512).contains(&key.len()) || key.chars().any(char::is_control) {
-        return Err(AppError::validation("Введите корректный ключ API 2ГИС"));
+    if key.len() < 4 || key.chars().any(char::is_control) {
+        return Err(AppError::validation("Введите корректный лицензионный ключ"));
     }
-    crate::credentials::save_2gis_api_key(key)?;
+    let provider = state.parselab_provider.clone();
+    let owned = key.to_owned();
+    // Verify against the key service before persisting.
+    let valid = tauri::async_runtime::spawn(async move {
+        provider.check_key(&owned).await.map(|user| user.is_some())
+    })
+    .await
+    .map_err(|e| AppError::storage(format!("Проверка ключа не выполнена: {e}")))??;
+    if !valid {
+        return Err(AppError::validation("Сервис ключей отклонил этот ключ"));
+    }
+    crate::credentials::save_parselab_key(key)?;
     *state
-        .api_key_state
+        .license_key_state
         .write()
-        .map_err(|_| AppError::storage("Состояние ключа 2ГИС недоступно"))? = Some(key.to_owned());
+        .map_err(|_| AppError::storage("Состояние лицензионного ключа недоступно"))? =
+        Some(key.to_owned());
     Ok(true)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub fn delete_2gis_api_key(state: State<'_, AppState>) -> Result<bool, AppError> {
-    crate::credentials::delete_2gis_api_key()?;
+pub fn delete_parselab_key(state: State<'_, AppState>) -> Result<bool, AppError> {
+    crate::credentials::delete_parselab_key()?;
     *state
-        .api_key_state
+        .license_key_state
         .write()
-        .map_err(|_| AppError::storage("Состояние ключа 2ГИС недоступно"))? = None;
+        .map_err(|_| AppError::storage("Состояние лицензионного ключа недоступно"))? = None;
     Ok(true)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub fn two_gis_api_key_saved(state: State<'_, AppState>) -> bool {
+pub fn parselab_key_saved(state: State<'_, AppState>) -> bool {
     state
-        .api_key_state
+        .license_key_state
         .read()
         .is_ok_and(|key| key.as_ref().is_some_and(|value| !value.trim().is_empty()))
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn two_gis_categories(
-    state: State<'_, AppState>,
-    region: String,
-    query: String,
-) -> Result<Vec<twogis_domain::CategorySuggestion>, AppError> {
-    if query.trim().len() < 2 {
-        return Ok(Vec::new());
-    }
-    state
-        .two_gis_provider
-        .search_categories(&region, &query)
-        .await
+pub fn catalog_cities_list() -> Vec<twogis_domain::CatalogCity> {
+    twogis_domain::supported_cities()
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn catalog_city_rubrics(city_id: String) -> Vec<twogis_domain::CatalogRubric> {
+    twogis_domain::city_rubric_suggestions(&city_id)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn catalog_categories_list() -> Vec<twogis_domain::CatalogCategory> {
+    twogis_domain::catalog_categories().to_vec()
 }
 
 #[tauri::command]

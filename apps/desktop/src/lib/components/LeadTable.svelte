@@ -26,9 +26,6 @@
   function sourceLabel(source: SourceKind) {
     switch (source) {
       case 'twoGis': return '2GIS';
-      case 'yell': return 'Yell';
-      case 'zoon': return 'Zoon';
-      case 'rusprofile': return 'Rusprofile';
     }
   }
 

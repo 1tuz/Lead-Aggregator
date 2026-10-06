@@ -2,34 +2,48 @@ use keyring::{Entry, Error};
 use twogis_domain::AppError;
 
 const SERVICE: &str = "dev.local.lead-aggregator";
-const ACCOUNT: &str = "2gis-places-api-key";
+const ACCOUNT_PARSELAB: &str = "parselab-license-key";
 
-fn entry() -> Result<Entry, AppError> {
-    Entry::new(SERVICE, ACCOUNT)
+fn entry(account: &str) -> Result<Entry, AppError> {
+    Entry::new(SERVICE, account)
         .map_err(|_| AppError::storage("Не удалось подключить системное хранилище секретов"))
 }
 
-pub fn load_2gis_api_key() -> Result<Option<String>, AppError> {
-    match entry()?.get_password() {
+pub fn load_parselab_key() -> Result<Option<String>, AppError> {
+    load(ACCOUNT_PARSELAB, "лицензионный ключ")
+}
+
+pub fn save_parselab_key(key: &str) -> Result<(), AppError> {
+    save(ACCOUNT_PARSELAB, key, "лицензионный ключ")
+}
+
+pub fn delete_parselab_key() -> Result<(), AppError> {
+    delete(ACCOUNT_PARSELAB, "лицензионный ключ")
+}
+
+fn load(account: &str, label: &str) -> Result<Option<String>, AppError> {
+    match entry(account)?.get_password() {
         Ok(key) => Ok(Some(key)),
         Err(Error::NoEntry) => Ok(None),
-        Err(_) => Err(AppError::storage(
-            "Не удалось прочитать ключ 2ГИС из системного хранилища",
-        )),
+        Err(_) => Err(AppError::storage(format!(
+            "Не удалось прочитать {label} из системного хранилища"
+        ))),
     }
 }
 
-pub fn save_2gis_api_key(key: &str) -> Result<(), AppError> {
-    entry()?
-        .set_password(key)
-        .map_err(|_| AppError::storage("Не удалось сохранить ключ 2ГИС в системном хранилище"))
+fn save(account: &str, key: &str, label: &str) -> Result<(), AppError> {
+    entry(account)?.set_password(key).map_err(|_| {
+        AppError::storage(format!(
+            "Не удалось сохранить {label} в системном хранилище"
+        ))
+    })
 }
 
-pub fn delete_2gis_api_key() -> Result<(), AppError> {
-    match entry()?.delete_credential() {
+fn delete(account: &str, label: &str) -> Result<(), AppError> {
+    match entry(account)?.delete_credential() {
         Ok(()) | Err(Error::NoEntry) => Ok(()),
-        Err(_) => Err(AppError::storage(
-            "Не удалось удалить ключ 2ГИС из системного хранилища",
-        )),
+        Err(_) => Err(AppError::storage(format!(
+            "Не удалось удалить {label} из системного хранилища"
+        ))),
     }
 }

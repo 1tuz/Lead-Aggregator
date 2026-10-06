@@ -3,13 +3,13 @@ members = [
   "crates/domain",
   "crates/provider-core",
   "crates/provider-2gis",
-  "crates/provider-public-catalogs",
   "crates/dedupe",
   "crates/storage-sqlite",
   "crates/export",
   "crates/application",
   "apps/desktop/src-tauri",
   "apps/cli",
+  "xtask",
 ]
 resolver = "2"
 

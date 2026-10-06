@@ -1,5 +1,6 @@
 mod api;
 mod parse;
+pub mod parselab;
 
 use std::{
     collections::HashSet,
@@ -418,11 +419,16 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0")?;
         let url = Url::parse(&format!("http://{}/", listener.local_addr()?))?;
         let server = std::thread::spawn(move || {
-            if let Ok((mut socket, _)) = listener.accept() {
-                let mut request = [0; 4096];
-                let _ = socket.read(&mut request);
-                let _ = socket.write_all(b"HTTP/1.1 429 Too Many Requests\r\nRetry-After: 5\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
-            }
+            // Accept the request connection; set a read deadline so a stray
+            // preconnect cannot stall the test.
+            let Ok((mut socket, _)) = listener.accept() else {
+                return;
+            };
+            let _ = socket.set_read_timeout(Some(std::time::Duration::from_secs(2)));
+            let mut request = [0; 4096];
+            let _ = socket.read(&mut request);
+            let _ = socket.write_all(b"HTTP/1.1 429 Too Many Requests\r\nRetry-After: 5\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            let _ = socket.flush();
         });
         let control = ProviderControl::new(tokio_util::sync::CancellationToken::new());
         let request = SearchRequest::default();

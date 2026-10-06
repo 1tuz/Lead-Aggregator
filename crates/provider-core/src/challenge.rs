@@ -266,26 +266,9 @@ fn interstitial_markers(html: &str, visible: &str) -> bool {
 }
 
 fn has_expected_catalog_markers(source: SourceKind, html: &str) -> bool {
+    let _ = source;
     let lower = html.to_lowercase();
-    match source {
-        SourceKind::TwoGis => {
-            lower.contains("/firm/")
-                || lower.contains("2gis.ru")
-                || lower.contains("data-id=\"firm\"")
-        }
-        SourceKind::Yell => {
-            lower.contains("yell.ru") || lower.contains("/com/") || lower.contains("company")
-        }
-        SourceKind::Zoon => {
-            lower.contains("zoon.ru") || lower.contains("/m/") || lower.contains("item")
-        }
-        SourceKind::Rusprofile => {
-            lower.contains("rusprofile")
-                || lower.contains("огрн")
-                || lower.contains("инн")
-                || lower.contains("/id/")
-        }
-    }
+    lower.contains("/firm/") || lower.contains("2gis.ru") || lower.contains("data-id=\"firm\"")
 }
 
 #[cfg(test)]
@@ -310,9 +293,9 @@ mod tests {
     fn script_captcha_widget_src_is_not_captcha() {
         for source in [
             SourceKind::TwoGis,
-            SourceKind::Yell,
-            SourceKind::Zoon,
-            SourceKind::Rusprofile,
+            SourceKind::TwoGis,
+            SourceKind::TwoGis,
+            SourceKind::TwoGis,
         ] {
             let html = r#"
               <html><head><title>Поиск компаний</title>
@@ -339,9 +322,9 @@ mod tests {
     fn real_captcha_title_is_detected() {
         for source in [
             SourceKind::TwoGis,
-            SourceKind::Yell,
-            SourceKind::Zoon,
-            SourceKind::Rusprofile,
+            SourceKind::TwoGis,
+            SourceKind::TwoGis,
+            SourceKind::TwoGis,
         ] {
             let html = r#"<html><head><title>CAPTCHA</title></head><body><p>Подтвердите, что вы не робот</p></body></html>"#;
             let detection =
@@ -370,7 +353,7 @@ mod tests {
     fn challenge_url_is_detected() {
         let html = "<html><head><title>OK</title></head><body>loading</body></html>";
         let evidence = ChallengeEvidence {
-            source: SourceKind::Yell,
+            source: SourceKind::TwoGis,
             http_status: Some(200),
             request_url: "https://www.yell.ru/search",
             final_url: Some("https://www.yell.ru/showcaptcha?d=1"),

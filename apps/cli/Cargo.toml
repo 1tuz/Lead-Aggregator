@@ -10,16 +10,16 @@ name = "lead-aggregator"
 path = "src/main.rs"
 
 [dependencies]
-serde.workspace = true
+clap = { version = "4", features = ["derive"] }
 serde_json.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
-url.workspace = true
-twogis-dedupe = { path = "../../crates/dedupe" }
+twogis-application = { path = "../../crates/application" }
 twogis-domain = { path = "../../crates/domain" }
+twogis-export = { path = "../../crates/export" }
 twogis-provider = { path = "../../crates/provider-2gis" }
 twogis-provider-core = { path = "../../crates/provider-core" }
-twogis-provider-public-catalogs = { path = "../../crates/provider-public-catalogs" }
+twogis-storage-sqlite = { path = "../../crates/storage-sqlite" }
 
 [lints]
 workspace = true

@@ -32,6 +32,10 @@ impl CatalogHttpClient {
     pub fn new() -> Result<Self, AppError> {
         let client = Client::builder()
             .user_agent(DESKTOP_USER_AGENT)
+            // Never route through a system-level proxy (macOS/Windows global
+            // proxies are ignored): catalog requests and loopback test
+            // fixtures must go directly.
+            .no_proxy()
             .timeout(Duration::from_secs(25))
             .connect_timeout(Duration::from_secs(10))
             .pool_idle_timeout(Duration::from_secs(90))
@@ -217,9 +221,9 @@ mod tests {
     fn http_429_and_403_map_for_all_sources() {
         for source in [
             SourceKind::TwoGis,
-            SourceKind::Yell,
-            SourceKind::Zoon,
-            SourceKind::Rusprofile,
+            SourceKind::TwoGis,
+            SourceKind::TwoGis,
+            SourceKind::TwoGis,
         ] {
             assert_eq!(
                 classify_http_block(429),

@@ -3,31 +3,25 @@
   import { CircleStop, Database, Download, Moon, PanelLeft, Play, Sun } from 'lucide-svelte';
   import { onMount } from 'svelte';
   import { api, errorMessage, type CollectionJobInfo, type ExportColumn, type ExportFormat, type HealthInfo, type Organization, type ProviderSearchConfig, type ProviderStatus, type ScrapeProgress, type SearchRunInfo, type SourceKind } from './lib/ipc';
-  import { citySlug, normalizePlaceName, regionCityCount, russianCities, russianRegions, type RussianCity } from './lib/geography';
+  import type { CatalogCity, CatalogRubric } from './lib/ipc';
   import LeadTable from './lib/components/LeadTable.svelte';
   import ProviderControls from './lib/components/ProviderControls.svelte';
   import ProviderStatusPanel from './lib/components/ProviderStatusPanel.svelte';
-  import TwoGisApiKeySettings from './lib/components/TwoGisApiKeySettings.svelte';
+  import ParselabKeySettings from './lib/components/ParselabKeySettings.svelte';
   import AppUpdaterSettings from './lib/components/AppUpdaterSettings.svelte';
 
-  const allSources: SourceKind[] = ['twoGis', 'yell', 'zoon', 'rusprofile'];
+  const allSources: SourceKind[] = ['twoGis'];
   const defaultColumnOrder: ExportColumn[] = ['company', 'category', 'sources', 'address', 'phone', 'inn', 'website', 'tags'];
   const initialProviderConfigs: ProviderSearchConfig[] = [
-    { source: 'twoGis', enabled: true, maxResults: 500, maxPages: 50, concurrency: 1, requestDelayMs: 250, preset: 'gentle', maxRetries: 2, backoffBaseSeconds: 60 },
-    { source: 'yell', enabled: false, maxResults: 1500, maxPages: 50, concurrency: 1, requestDelayMs: 2500, preset: 'gentle', maxRetries: 2, backoffBaseSeconds: 90 },
-    { source: 'zoon', enabled: false, maxResults: 1000, maxPages: 40, concurrency: 1, requestDelayMs: 3500, preset: 'gentle', maxRetries: 2, backoffBaseSeconds: 120 },
-    { source: 'rusprofile', enabled: false, maxResults: 1000, maxPages: 50, concurrency: 1, requestDelayMs: 5000, preset: 'gentle', maxRetries: 2, backoffBaseSeconds: 180 },
+    { source: 'twoGis', enabled: true, maxResults: 50_000, maxPages: 1000, concurrency: 1, requestDelayMs: 0, preset: 'gentle', maxRetries: 2, backoffBaseSeconds: 60 },
   ];
 
-  let region = '';
-  let locationText = '';
-  let selectedCity: RussianCity | null = null;
-  let regionFilter = '';
-  let allRegionsMode = false;
-  let locationSuggestionsOpen = false;
-  let activeSuggestion = 0;
-  let locationPicker: HTMLDivElement;
-  let query = 'автосервис';
+  let catalogCities: CatalogCity[] = [];
+  let selectedCity: CatalogCity | null = null;
+  let cityFilter = '';
+  let catalogRubrics: CatalogRubric[] = [];
+  let selectedRubrics: string[] = [];
+  let rubricSearch = '';
   let providerConfigs: ProviderSearchConfig[] = initialProviderConfigs;
   let providerStatuses: ProviderStatus[] = [];
   let rows: Organization[] = [];
@@ -47,50 +41,16 @@
   let health: HealthInfo | null = null;
   let theme: 'frost' | 'graphite' = 'frost';
   let sidebarCollapsed = false;
-  let twoGisApiKeySaved = false;
+  let parselabKeySaved = false;
   let columnOrder: ExportColumn[] = defaultColumnOrder;
-  let categorySuggestions: { id: string; name: string }[] = [];
-  let selectedCategory: string | null = null;
-  let categoryError = '';
-  let categoryLoading = false;
-  let categoryTimer = 0;
 
-  $: normalizedLocation = normalizePlaceName(locationText);
-  $: matchingRegions = regionFilter
-    ? []
-    : allRegionsMode
-      ? russianRegions
-      : russianRegions.filter((name) => normalizePlaceName(name).includes(normalizedLocation)).slice(0, 5);
-  $: matchingCities = russianCities
-    .filter((city) => (!regionFilter || city.region === regionFilter || city.autonomousDistrict === regionFilter)
-      && !allRegionsMode
-      && (!normalizedLocation || normalizePlaceName(`${city.name} ${city.region} ${city.autonomousDistrict ?? ''}`).includes(normalizedLocation)))
-    .slice(0, normalizedLocation && !regionFilter ? 10 : russianCities.length);
-  $: suggestions = [
-    { type: 'all' as const },
-    ...matchingRegions.map((name) => ({ type: 'region' as const, name })),
-    ...matchingCities.map((city) => ({ type: 'city' as const, city })),
-  ];
-  $: targetRegions = selectedCity
-    ? [citySlug(selectedCity.name)]
-    : regionFilter
-      ? [...new Set(russianCities.filter((city) => city.region === regionFilter || city.autonomousDistrict === regionFilter).map((city) => citySlug(city.name)))]
-      : allRegionsMode
-        ? [...new Set(russianCities.map((city) => citySlug(city.name)))]
-        : [];
+  $: matchingCatalogCities = catalogCities.filter((city) =>
+    !cityFilter || city.name.toLowerCase().includes(cityFilter.toLowerCase()));
+  $: visibleRubrics = catalogRubrics.filter((rubric) =>
+    !rubricSearch || rubric.name.toLowerCase().includes(rubricSearch.toLowerCase()));
   $: selectedSources = providerConfigs.filter((config) => config.enabled).map((config) => config.source);
 
   function handleKeydown(event: KeyboardEvent) {
-    if (locationSuggestionsOpen && suggestions.length > 0) {
-      if (event.key === 'ArrowDown') { event.preventDefault(); activeSuggestion = (activeSuggestion + 1) % suggestions.length; return; }
-      if (event.key === 'ArrowUp') { event.preventDefault(); activeSuggestion = (activeSuggestion + suggestions.length - 1) % suggestions.length; return; }
-      if (event.key === 'Enter' && suggestions[activeSuggestion]) {
-        event.preventDefault();
-        chooseLocation(suggestions[activeSuggestion]);
-        return;
-      }
-    }
-    if (event.key === 'Escape') locationSuggestionsOpen = false;
     if (event.metaKey && event.key.toLowerCase() === 'b') {
       event.preventDefault();
       sidebarCollapsed = !sidebarCollapsed;
@@ -109,7 +69,11 @@
     if (storedTheme === 'graphite') theme = 'graphite';
     applyTheme();
     void api.health().then((value) => (health = value)).catch(() => undefined);
-    void api.twoGisApiKeySaved().then((value) => (twoGisApiKeySaved = value)).catch(() => undefined);
+    void api.parselabKeySaved().then((value) => (parselabKeySaved = value)).catch(() => undefined);
+    void api.catalogCities().then((value) => {
+      catalogCities = value;
+      if (!selectedCity && value.length > 0) selectCity(value.find((city) => city.id === '69') ?? value[0]);
+    }).catch(() => undefined);
     void loadRecentRuns().catch(() => undefined);
     const unlisten = listen<ScrapeProgress>('scrape-progress', ({ payload }) => {
       message = payload.message;
@@ -130,41 +94,26 @@
         providerStatuses = [...providerStatuses.filter((item) => item.source !== status.source), status];
       }
     });
-    const closeLocationSuggestions = (event: PointerEvent) => {
-      if (locationPicker && !locationPicker.contains(event.target as Node)) locationSuggestionsOpen = false;
-    };
-    document.addEventListener('pointerdown', closeLocationSuggestions);
     return () => {
       void unlisten.then((fn) => fn());
-      document.removeEventListener('pointerdown', closeLocationSuggestions);
     };
   });
 
-  function chooseLocation(option: (typeof suggestions)[number]) {
-    if (option.type === 'all') {
-      selectedCity = null;
-      region = '';
-      regionFilter = '';
-      allRegionsMode = true;
-      locationText = 'Все регионы';
-      activeSuggestion = 0;
-      locationSuggestionsOpen = true;
-      return;
-    }
-    if (option.type === 'region') {
-      allRegionsMode = false;
-      regionFilter = option.name;
-      locationText = '';
-      activeSuggestion = 0;
-      locationSuggestionsOpen = true;
-      return;
-    }
-    selectedCity = option.city;
-    allRegionsMode = false;
-    region = citySlug(option.city.name);
-    regionFilter = '';
-    locationText = option.city.name;
-    locationSuggestionsOpen = false;
+  function selectCity(city: CatalogCity) {
+    selectedCity = city;
+    selectedRubrics = [];
+    catalogRubrics = [];
+    void api.catalogCityRubrics(city.id).then((value) => (catalogRubrics = value)).catch(() => undefined);
+  }
+
+  function toggleRubric(id: string) {
+    selectedRubrics = selectedRubrics.includes(id)
+      ? selectedRubrics.filter((value) => value !== id)
+      : [...selectedRubrics, id];
+  }
+
+  function toggleAllRubrics() {
+    selectedRubrics = selectedRubrics.length === visibleRubrics.length ? [] : visibleRubrics.map((rubric) => rubric.id);
   }
 
   function applyTheme() {
@@ -207,29 +156,28 @@
 
   function buildRequest() {
     const active = providerConfigs.filter((config) => config.enabled);
-    const regions = targetRegions;
+    const cityId = selectedCity?.id ?? '';
     return {
-      region: regions[0] ?? '',
-      regions,
-      query,
+      region: cityId,
+      regions: [cityId],
+      query: selectedRubrics.join(','),
       maxResults: Math.max(1, ...active.map((config) => config.maxResults)),
       maxPages: Math.max(1, ...active.map((config) => config.maxPages)),
       concurrency: Math.max(1, ...active.map((config) => config.concurrency)),
-      requestDelayMs: Math.max(250, Math.min(...active.map((config) => config.requestDelayMs))),
+      requestDelayMs: Math.min(...active.map((config) => config.requestDelayMs), 10_000),
       sources: active.map((config) => config.source),
       providerConfigs,
-      category: selectedCategory,
     };
   }
 
-  async function saveTwoGisApiKey(key: string) {
-    await api.save2gisApiKey(key);
-    twoGisApiKeySaved = true;
+  async function saveParselabKey(key: string) {
+    await api.saveParselabKey(key);
+    parselabKeySaved = true;
   }
 
-  async function deleteTwoGisApiKey() {
-    await api.delete2gisApiKey();
-    twoGisApiKeySaved = false;
+  async function deleteParselabKey() {
+    await api.deleteParselabKey();
+    parselabKeySaved = false;
   }
 
   function applySummary(summary: Awaited<ReturnType<typeof api.startSearch>>) {
@@ -285,24 +233,6 @@
     columnOrder = order;
     localStorage.setItem('lead-column-order', JSON.stringify(order));
   }
-  async function suggestCategories(value: string) {
-    window.clearTimeout(categoryTimer);
-    selectedCategory = null;
-    if (value.trim().length < 2 || !targetRegions[0]) { categorySuggestions = []; return; }
-    categoryTimer = window.setTimeout(async () => {
-      categoryLoading = true;
-      categoryError = '';
-      try { categorySuggestions = await api.twoGisCategories(targetRegions[0], value.trim()); }
-      catch (cause) { categorySuggestions = []; categoryError = errorMessage(cause); }
-      finally { categoryLoading = false; }
-    }, 350);
-  }
-  function chooseCategory(category: { id: string; name: string }) {
-    selectedCategory = category.name;
-    query = category.name;
-    categorySuggestions = [];
-    categoryError = '';
-  }
   async function exportRows(format: ExportFormat) {
     error = '';
     if (!currentRunId) { error = 'Сначала выбери или выполни поиск'; return; }
@@ -325,82 +255,66 @@
 
     <div class="form-section">
       <div class="location-field">
-        <label for="location-search"><span>Город или регион</span></label>
-        <div class="location-picker" bind:this={locationPicker}>
-          <input
-            id="location-search"
-            value={locationText}
-            placeholder="Начните вводить название"
-            disabled={running}
-            role="combobox"
-            aria-autocomplete="list"
-            aria-expanded={locationSuggestionsOpen}
-            aria-controls="location-suggestions"
-            onfocus={() => (locationSuggestionsOpen = true)}
-            oninput={(event) => {
-              locationText = event.currentTarget.value;
-              allRegionsMode = false;
-              selectedCity = null;
-              region = '';
-              activeSuggestion = 0;
-              locationSuggestionsOpen = true;
-            }}
-          />
-          {#if regionFilter}
-            <div class="region-filter"><span>{regionFilter}</span><button type="button" aria-label="Очистить фильтр региона" onclick={() => { regionFilter = ''; locationText = ''; }}>×</button></div>
-          {/if}
-          {#if locationSuggestionsOpen && suggestions.length > 0}
-            <div class="location-suggestions" id="location-suggestions" role="listbox" aria-label="Города и регионы России">
-              {#each suggestions as suggestion, index (suggestion.type === 'all' ? 'all-regions' : suggestion.type === 'region' ? `region-${suggestion.name}` : `city-${suggestion.city.name}-${suggestion.city.region}`)}
-                {#if suggestion.type === 'all'}
-                  <button type="button" role="option" aria-selected={activeSuggestion === index} class="location-option region-option" class:active={activeSuggestion === index} onclick={() => chooseLocation(suggestion)}>
-                    <strong>Все регионы</strong><small>{russianRegions.length} регионов России</small>
-                  </button>
-                {:else if suggestion.type === 'region'}
-                  <button type="button" role="option" aria-selected={activeSuggestion === index} class="location-option region-option" class:active={activeSuggestion === index} onclick={() => chooseLocation(suggestion)}>
-                    <strong>{suggestion.name}</strong><small>{regionCityCount(suggestion.name)} городов · показать</small>
-                  </button>
-                {:else}
-                  <button type="button" role="option" aria-selected={activeSuggestion === index} class="location-option" class:active={activeSuggestion === index} onclick={() => chooseLocation(suggestion)}>
-                    <strong>{suggestion.city.name}</strong><small>{suggestion.city.autonomousDistrict ? `${suggestion.city.autonomousDistrict} · ` : ''}{suggestion.city.region}</small>
-                  </button>
-                {/if}
-              {/each}
-            </div>
-          {:else if locationSuggestionsOpen && (normalizedLocation || regionFilter)}
-            <div class="location-suggestions no-suggestions">Ничего не найдено</div>
-          {/if}
+        <label for="city-search"><span>Город</span></label>
+        <input
+          id="city-search"
+          value={cityFilter}
+          placeholder="Начните вводить название"
+          disabled={running}
+          oninput={(event) => (cityFilter = event.currentTarget.value)}
+        />
+        <div class="city-list" role="listbox" aria-label="Города с выгрузками">
+          {#each matchingCatalogCities as city (city.id)}
+            <button type="button" role="option" class="city-option" class:active={selectedCity?.id === city.id} onclick={() => selectCity(city)} disabled={running}>
+              <strong>{city.name}</strong>
+            </button>
+          {:else}
+            <div class="no-cities">Нет городов по запросу</div>
+          {/each}
         </div>
-        {#if selectedCity}<small class="selected-location">{selectedCity.region}{selectedCity.autonomousDistrict ? ` · ${selectedCity.autonomousDistrict}` : ''}</small>
-        {:else if regionFilter}<small class="selected-location">{regionFilter} · весь регион · {targetRegions.length} городов</small>
-        {:else if allRegionsMode}<small class="selected-location">Вся Россия · {targetRegions.length} городов</small>{/if}
+        {#if selectedCity}<small class="selected-location">{selectedCity.name} · {catalogRubrics.length} рубрик</small>{/if}
       </div>
+
       <div class="location-field">
-        <label for="query-search"><span>Категория или запрос</span></label>
-        <div class="location-picker">
-          <input id="query-search" value={query} placeholder="Начните вводить категорию 2ГИС" disabled={running} oninput={(event) => { query = event.currentTarget.value; void suggestCategories(query); }} />
-          {#if categorySuggestions.length > 0}
-            <div class="location-suggestions" role="listbox" aria-label="Категории 2ГИС">
-              {#each categorySuggestions as category (category.id)}
-                <button type="button" role="option" aria-selected="false" class="location-option" onclick={() => chooseCategory(category)}><strong>{category.name}</strong></button>
-              {/each}
-            </div>
-          {/if}
+        <div class="rubrics-heading">
+          <label for="rubric-search"><span>Рубрики</span></label>
+          <button class="mini-button" type="button" onclick={toggleAllRubrics} disabled={running || catalogRubrics.length === 0}>
+            {selectedRubrics.length === visibleRubrics.length && visibleRubrics.length > 0 ? 'Снять все' : 'Выбрать все'}
+          </button>
         </div>
-        {#if selectedCategory}<small class="selected-location">Категория 2ГИС · точный поиск по рубрике</small>
-        {:else if categoryLoading}<small class="selected-location">Ищу рубрики 2ГИС…</small>
-        {:else if categoryError}<small class="selected-location">Подсказки 2ГИС: {categoryError}</small>
-        {:else}<small class="selected-location">Выберите рубрику из списка или оставьте свободный запрос</small>{/if}
+        <input
+          id="rubric-search"
+          value={rubricSearch}
+          placeholder="Поиск по рубрикам"
+          disabled={running}
+          oninput={(event) => (rubricSearch = event.currentTarget.value)}
+        />
+        <div class="rubric-list" role="group" aria-label="Рубрики города">
+          {#each visibleRubrics as rubric (rubric.id)}
+            <label class="rubric-row">
+              <input
+                type="checkbox"
+                checked={selectedRubrics.includes(rubric.id)}
+                disabled={running}
+                onchange={() => toggleRubric(rubric.id)}
+              />
+              <span>{rubric.name}</span>
+            </label>
+          {:else}
+            <div class="no-cities">{selectedCity ? 'Рубрик не найдено' : 'Сначала выберите город'}</div>
+          {/each}
+        </div>
+        {#if selectedRubrics.length > 0}<small class="selected-location">Выбрано рубрик: {selectedRubrics.length}</small>{/if}
       </div>
 
       <details class="settings-disclosure" open>
         <summary>Настройки источников</summary>
         <div class="settings-content">
-          <TwoGisApiKeySettings
-            saved={twoGisApiKeySaved}
+          <ParselabKeySettings
+            saved={parselabKeySaved}
             disabled={running}
-            onSave={saveTwoGisApiKey}
-            onDelete={deleteTwoGisApiKey}
+            onSave={saveParselabKey}
+            onDelete={deleteParselabKey}
           />
           <AppUpdaterSettings currentVersion={health?.appVersion} />
           <ProviderControls
@@ -415,7 +329,7 @@
       {#if running}
         <button class="primary danger" onclick={cancelSearch}><CircleStop size={16} /> Остановить</button>
       {:else}
-        <button class="primary" onclick={runSearch} disabled={!query.trim() || targetRegions.length === 0 || selectedSources.length === 0}><Play size={16} fill="currentColor" /> Собрать лиды</button>
+        <button class="primary" onclick={runSearch} disabled={!selectedCity || selectedRubrics.length === 0 || selectedSources.length === 0}><Play size={16} fill="currentColor" /> Собрать лиды</button>
       {/if}
     </div>
 
@@ -555,4 +469,19 @@
   .pager { display:flex; justify-content:center; align-items:center; gap:10px; padding:0 18px 14px; color:var(--muted); font-size:10px; }
   .pager button { height:28px; }
   @media (max-width: 980px) { .shell { grid-template-columns: 252px minmax(0, 1fr); } .stats { grid-template-columns: repeat(2, 1fr); } }
+
+  .city-list, .rubric-list { max-height: 180px; overflow-y: auto; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-solid); padding: 4px; display: grid; gap: 2px; }
+  .rubric-list { max-height: 220px; }
+  .city-option { display: block; width: 100%; min-height: 30px; padding: 4px 8px; border: 0; border-radius: 6px; text-align: left; background: transparent; color: var(--fg); font-size: 11px; cursor: pointer; }
+  .city-option strong { font-weight: 500; }
+  .city-option:hover, .city-option.active { background: var(--panel-muted); }
+  .city-option.active strong { font-weight: 700; }
+  .rubric-row { display: flex; align-items: center; gap: 7px; min-height: 26px; padding: 2px 6px; border-radius: 6px; font-size: 11px; cursor: pointer; }
+  .rubric-row:hover { background: var(--panel-muted); }
+  .rubric-row input { width: 14px; height: 14px; margin: 0; accent-color: var(--fg); }
+  .rubric-row span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .no-cities { padding: 10px; color: var(--muted); font-size: 10px; text-align: center; }
+  .rubrics-heading { display: flex; align-items: center; justify-content: space-between; }
+  .mini-button { height: 22px; padding: 0 8px; font-size: 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-solid); color: var(--muted); cursor: pointer; }
+  .mini-button:disabled { opacity: .45; cursor: default; }
 </style>

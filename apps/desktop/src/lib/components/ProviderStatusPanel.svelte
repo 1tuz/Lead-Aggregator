@@ -20,9 +20,6 @@
 
   const labels: Record<SourceKind, string> = {
     twoGis: '2GIS',
-    yell: 'Yell',
-    zoon: 'Zoon',
-    rusprofile: 'Rusprofile',
   };
 
   const stateLabels: Record<ProviderStatus['state'], string> = {

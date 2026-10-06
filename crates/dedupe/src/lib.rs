@@ -407,7 +407,7 @@ mod tests {
     fn merges_same_organization_from_two_sources_by_phone_and_name() {
         let result = deduplicate(vec![
             row("a", "Ромашка", "8 (999) 123-45-67", SourceKind::TwoGis),
-            row("b", "ООО Ромашка", "+7 999 123 45 67", SourceKind::Yell),
+            row("b", "ООО Ромашка", "+7 999 123 45 67", SourceKind::TwoGis),
         ]);
         assert_eq!(result.organizations.len(), 1);
         assert_eq!(result.merged_count, 1);
@@ -424,7 +424,12 @@ mod tests {
             SourceKind::TwoGis,
         );
         a.address = Some("ул. Первая, 1".into());
-        let mut b = row("b", "Автосервис Бета", "+7 999 111 22 33", SourceKind::Yell);
+        let mut b = row(
+            "b",
+            "Автосервис Бета",
+            "+7 999 111 22 33",
+            SourceKind::TwoGis,
+        );
         b.address = Some("ул. Вторая, 2".into());
         let result = deduplicate(vec![a, b]);
         assert_eq!(result.organizations.len(), 2);
@@ -436,7 +441,7 @@ mod tests {
         a.phones.clear();
         a.website = Some("https://franchise.example".into());
         a.address = Some("ул. Первая, 1".into());
-        let mut b = row("b", "Сеть Пункт Б", "", SourceKind::Yell);
+        let mut b = row("b", "Сеть Пункт Б", "", SourceKind::TwoGis);
         b.phones.clear();
         b.website = Some("https://www.franchise.example/contacts".into());
         b.address = Some("ул. Вторая, 2".into());
@@ -448,7 +453,7 @@ mod tests {
         let mut a = row("a", "Шиномонтаж Сеть", "", SourceKind::TwoGis);
         a.phones.clear();
         a.address = Some("ул. Ленина, 1".into());
-        let mut b = row("b", "Шиномонтаж Сеть", "", SourceKind::Yell);
+        let mut b = row("b", "Шиномонтаж Сеть", "", SourceKind::TwoGis);
         b.phones.clear();
         b.address = Some("ул. Мира, 5".into());
         let result = deduplicate(vec![a, b]);
@@ -466,7 +471,7 @@ mod tests {
         let mut a = row("a", "Сеть", "", SourceKind::TwoGis);
         a.phones.clear();
         a.address = Some("ул. Первая, 1".into());
-        let mut b = row("b", "Сеть", "", SourceKind::Yell);
+        let mut b = row("b", "Сеть", "", SourceKind::TwoGis);
         b.phones.clear();
         b.address = Some("ул. Вторая, 2".into());
         let result = deduplicate(vec![a, b]);
@@ -490,7 +495,7 @@ mod tests {
         let mut a = row("shared-a", "Альфа", "", SourceKind::TwoGis);
         a.phones.clear();
         a.website = Some("https://taplink.cc/alpha".into());
-        let mut b = row("shared-b", "Бета", "", SourceKind::Yell);
+        let mut b = row("shared-b", "Бета", "", SourceKind::TwoGis);
         b.phones.clear();
         b.website = Some("https://taplink.cc/beta".into());
 
@@ -500,12 +505,17 @@ mod tests {
 
     #[test]
     fn identity_keys_keep_old_and_new_strong_identifiers() {
-        let mut lead = row("source-42", "Ромашка", "+7 999 123-45-67", SourceKind::Yell);
+        let mut lead = row(
+            "source-42",
+            "Ромашка",
+            "+7 999 123-45-67",
+            SourceKind::TwoGis,
+        );
         lead.inn = Some("7701234567".into());
         let keys = identity_keys(&lead);
         assert!(keys.contains(&"inn:7701234567".to_owned()));
         assert!(keys.contains(&"phone:+79991234567".to_owned()));
-        assert!(keys.contains(&"source:yell:source-42".to_owned()));
+        assert!(keys.contains(&"source:2gis:source-42".to_owned()));
     }
 
     #[test]
@@ -513,7 +523,7 @@ mod tests {
         let mut by_inn_a = row("a", "Альфа", "", SourceKind::TwoGis);
         by_inn_a.phones.clear();
         by_inn_a.inn = Some("7701234567".into());
-        let mut by_inn_b = row("b", "Альфа ООО", "", SourceKind::Rusprofile);
+        let mut by_inn_b = row("b", "Альфа ООО", "", SourceKind::TwoGis);
         by_inn_b.phones.clear();
         by_inn_b.inn = Some("77-01234567".into());
         let inn_result = deduplicate(vec![by_inn_a, by_inn_b]);
@@ -523,7 +533,7 @@ mod tests {
         let mut by_ogrn_a = row("e", "Гамма", "", SourceKind::TwoGis);
         by_ogrn_a.phones.clear();
         by_ogrn_a.ogrn = Some("1027700123456".into());
-        let mut by_ogrn_b = row("f", "Гамма ООО", "", SourceKind::Rusprofile);
+        let mut by_ogrn_b = row("f", "Гамма ООО", "", SourceKind::TwoGis);
         by_ogrn_b.phones.clear();
         by_ogrn_b.ogrn = Some("1027700123456".into());
         assert_eq!(
@@ -537,7 +547,7 @@ mod tests {
         let mut by_domain_a = row("c", "Бета", "", SourceKind::TwoGis);
         by_domain_a.phones.clear();
         by_domain_a.website = Some("https://www.beta.example/catalog".into());
-        let mut by_domain_b = row("d", "ООО Бета", "", SourceKind::Yell);
+        let mut by_domain_b = row("d", "ООО Бета", "", SourceKind::TwoGis);
         by_domain_b.phones.clear();
         by_domain_b.website = Some("http://beta.example/contact".into());
         let domain_result = deduplicate(vec![by_domain_a, by_domain_b]);

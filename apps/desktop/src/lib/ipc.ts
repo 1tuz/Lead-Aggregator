@@ -1,6 +1,9 @@
 import {
   commands,
   type AppError,
+  type CatalogCategory,
+  type CatalogCity,
+  type CatalogRubric,
   type CollectionJobInfo,
   type CollectionPreset,
   type ExportFormat,
@@ -19,6 +22,9 @@ export type ExportColumn = 'company' | 'category' | 'sources' | 'address' | 'pho
 
 export type {
   AppError,
+  CatalogCategory,
+  CatalogCity,
+  CatalogRubric,
   CollectionJobInfo,
   CollectionPreset,
   ExportFormat,
@@ -58,6 +64,13 @@ export type ScrapeProgress = {
 
 type IpcResult<T> = { status: 'ok'; data: T } | { status: 'error'; error: AppError };
 
+function typed<T>(promise: Promise<T>): Promise<IpcResult<T>> {
+  return Promise.resolve(promise).then(
+    (data): IpcResult<T> => ({ status: 'ok', data }),
+    (error): IpcResult<T> => ({ status: 'error', error: error as AppError }),
+  );
+}
+
 function unwrap<T>(result: IpcResult<T>): T {
   if (result.status === 'error') throw result.error;
   return result.data;
@@ -78,13 +91,15 @@ export const api = {
     unwrap(await commands.resultsForRunPage(runId, offset, limit)),
   exportResults: async (runId: string, format: ExportFormat) =>
     unwrap(await commands.exportResults(runId, format)),
-  twoGisCategories: async (region: string, query: string) => unwrap(await commands.twoGisCategories(region, query)),
+  catalogCities: async () => unwrap(await typed(commands.catalogCitiesList())),
+  catalogCityRubrics: async (cityId: string) => unwrap(await typed(commands.catalogCityRubrics(cityId))),
+  catalogCategories: async () => unwrap(await typed(commands.catalogCategoriesList())),
   checkForUpdates: async () => unwrap(await commands.checkForUpdates()),
   installUpdate: async () => unwrap(await commands.installUpdate()),
   health: () => commands.health(),
-  save2gisApiKey: async (key: string) => unwrap(await commands.save2gisApiKey(key)),
-  delete2gisApiKey: async () => unwrap(await commands.delete2gisApiKey()),
-  twoGisApiKeySaved: () => commands.twoGisApiKeySaved(),
+  saveParselabKey: async (key: string) => unwrap(await commands.saveParselabKey(key)),
+  deleteParselabKey: async () => unwrap(await commands.deleteParselabKey()),
+  parselabKeySaved: () => commands.parselabKeySaved(),
 };
 
 export function errorMessage(error: unknown): string {
