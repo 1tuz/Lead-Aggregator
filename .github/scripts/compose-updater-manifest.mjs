@@ -23,7 +23,8 @@ for (const signatureFile of signatures) {
   const signature = fs.readFileSync(path.join(assetsDir, signatureFile), 'utf8').trim();
   let target = null;
   if (/\.app\.tar\.gz$/i.test(artifact)) {
-    target = /aarch64|arm64/i.test(artifact) ? 'darwin-aarch64' : 'darwin-x86_64';
+    // The macos-15 release runner is arm64 and Tauri omits the architecture from this filename.
+    target = /x86_64|x64|amd64/i.test(artifact) ? 'darwin-x86_64' : 'darwin-aarch64';
   } else if (/\.appimage(?:\.tar\.gz)?$/i.test(artifact)) {
     target = /aarch64|arm64/i.test(artifact) ? 'linux-aarch64' : 'linux-x86_64';
   } else if (/\.deb$/i.test(artifact)) {
