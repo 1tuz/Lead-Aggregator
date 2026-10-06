@@ -30,8 +30,15 @@
   "bundle": {
     "active": true,
     "createUpdaterArtifacts": true,
-    "icon": ["icons/icon.png", "icons/icon.icns", "icons/icon.ico"],
-    "targets": ["app", "dmg"],
+    "icon": [
+      "icons/icon.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "targets": [
+      "app",
+      "dmg"
+    ],
     "category": "Utility",
     "shortDescription": "Local-first multi-source lead aggregator",
     "longDescription": "A lightweight cross-platform desktop app that aggregates public business directory data, preserves source provenance, deduplicates leads, stores them in SQLite, and exports CSV/XLSX/JSON without bundling Chromium.",
@@ -41,7 +48,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY0QTM2Njc4M0ZGMkU3MTkKUldRWjUvSS9lR2FqOUEvb3B5SDJUSFRNbmxqbTNnWUhueFBrWHhUa2hsanFYYU1QNjNoUmtwTUkK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI5RTNGM0I0OTJEODFDRjMKUldUekhOaVN0UFBqdWJIM0dTbFNtNzYwOHY2dW9LWVdrQTh5dkJJWWk0ZElOMGg2NmNaT1ZpTFo=",
       "endpoints": [
         "https://github.com/1tuz/Lead-Aggregator/releases/latest/download/latest.json"
       ],
