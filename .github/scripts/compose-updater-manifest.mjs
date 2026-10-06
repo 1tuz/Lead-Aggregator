@@ -9,7 +9,15 @@ const notes = process.env.NOTES ?? '';
 if (!tag || !version) throw new Error('TAG and VERSION are required');
 
 const platforms = {};
-const signatures = fs.readdirSync(assetsDir).filter((name) => name.endsWith('.sig'));
+// Prefer AppImage for Linux updates: deb packages have no self-update path,
+// so when both artifacts exist the AppImage signature must win.
+const signatures = fs
+  .readdirSync(assetsDir)
+  .filter((name) => name.endsWith('.sig'))
+  .sort((a, b) => {
+    const score = (name) => (/\.appimage/i.test(name) ? 1 : /\.deb$/i.test(name) ? 0 : 0.5);
+    return score(b) - score(a);
+  });
 for (const signatureFile of signatures) {
   const artifact = signatureFile.slice(0, -4);
   const signature = fs.readFileSync(path.join(assetsDir, signatureFile), 'utf8').trim();
