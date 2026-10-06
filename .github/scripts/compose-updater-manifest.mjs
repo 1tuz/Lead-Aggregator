@@ -32,7 +32,9 @@ for (const signatureFile of signatures) {
     target = /arm64|aarch64/i.test(artifact) ? 'windows-aarch64' : 'windows-x86_64';
   }
   if (!target) continue;
-  if (platforms[target]) throw new Error(`Multiple updater assets for ${target}`);
+  // Signatures arrive sorted by preference (AppImage before deb), so the
+  // first one wins and lower-priority duplicates are skipped silently.
+  if (platforms[target]) continue;
   platforms[target] = {
     signature,
     url: `https://github.com/${repo}/releases/download/${tag}/${encodeURIComponent(artifact)}`,
