@@ -14,53 +14,6 @@ use crate::state::AppState;
 
 #[tauri::command]
 #[specta::specta]
-pub async fn save_parselab_key(state: State<'_, AppState>, key: String) -> Result<bool, AppError> {
-    let key = key.trim();
-    if key.len() < 4 || key.chars().any(char::is_control) {
-        return Err(AppError::validation("Введите корректный лицензионный ключ"));
-    }
-    let provider = state.parselab_provider.clone();
-    let owned = key.to_owned();
-    // Verify against the key service before persisting.
-    let valid = tauri::async_runtime::spawn(async move {
-        provider.check_key(&owned).await.map(|user| user.is_some())
-    })
-    .await
-    .map_err(|e| AppError::storage(format!("Проверка ключа не выполнена: {e}")))??;
-    if !valid {
-        return Err(AppError::validation("Сервис ключей отклонил этот ключ"));
-    }
-    crate::credentials::save_parselab_key(key)?;
-    *state
-        .license_key_state
-        .write()
-        .map_err(|_| AppError::storage("Состояние лицензионного ключа недоступно"))? =
-        Some(key.to_owned());
-    Ok(true)
-}
-
-#[tauri::command]
-#[specta::specta]
-pub fn delete_parselab_key(state: State<'_, AppState>) -> Result<bool, AppError> {
-    crate::credentials::delete_parselab_key()?;
-    *state
-        .license_key_state
-        .write()
-        .map_err(|_| AppError::storage("Состояние лицензионного ключа недоступно"))? = None;
-    Ok(true)
-}
-
-#[tauri::command]
-#[specta::specta]
-pub fn parselab_key_saved(state: State<'_, AppState>) -> bool {
-    state
-        .license_key_state
-        .read()
-        .is_ok_and(|key| key.as_ref().is_some_and(|value| !value.trim().is_empty()))
-}
-
-#[tauri::command]
-#[specta::specta]
 pub fn catalog_cities_list() -> Vec<twogis_domain::CatalogCity> {
     twogis_domain::supported_cities()
 }

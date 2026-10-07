@@ -1,6 +1,6 @@
 <script lang="ts">
   import { CirclePause, CirclePlay, RotateCcw } from 'lucide-svelte';
-  import type { CollectionJobInfo, ProviderStatus, SourceKind } from '../ipc';
+  import { searchRequestLabel, type CollectionJobInfo, type ProviderStatus, type SourceKind } from '../ipc';
 
   let {
     statuses,
@@ -68,7 +68,7 @@
         <strong>Незавершённые задания</strong>
         {#each resumableJobs.slice(0, 4) as job (job.jobId)}
           <div class="resume-row">
-            <span><b>{job.request.query}</b><small>{job.completedTargets} / {job.totalTargets} целей · {job.message}</small></span>
+            <span><b>{searchRequestLabel(job.request)}</b><small>{job.completedTargets} / {job.totalTargets} целей · {job.message}</small></span>
             <button onclick={() => onResumeJob(job.jobId)}><RotateCcw size={13} /> Продолжить</button>
           </div>
         {/each}

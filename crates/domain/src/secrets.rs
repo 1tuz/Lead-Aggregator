@@ -96,17 +96,20 @@ mod tests {
         }
         hasher.update([0xB7_u8]);
         key.copy_from_slice(&hasher.finalize());
-        let cipher = Aes256Gcm::new_from_slice(&key).unwrap();
+        let cipher = Aes256Gcm::new_from_slice(&key).expect("valid 32-byte key");
         let nonce = Nonce::from_slice(b"1234567890ab");
-        let ciphertext = cipher.encrypt(nonce, plain.as_bytes()).unwrap();
+        let ciphertext = cipher.encrypt(nonce, plain.as_bytes()).expect("encrypt");
         let nonce_b64 = "MTIzNDU2Nzg5MGFi".to_owned();
         (ciphertext, nonce_b64)
     }
 
     #[test]
     fn b64_decode_roundtrip() {
-        assert_eq!(b64_decode("aGVsbG8=").unwrap(), b"hello".to_vec());
-        assert_eq!(b64_decode("").unwrap(), Vec::<u8>::new());
+        assert_eq!(
+            b64_decode("aGVsbG8=").expect("valid b64"),
+            b"hello".to_vec()
+        );
+        assert_eq!(b64_decode("").expect("empty b64"), Vec::<u8>::new());
         assert!(b64_decode("!!!!").is_none());
     }
 

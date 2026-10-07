@@ -2,17 +2,14 @@
   import { listen } from '@tauri-apps/api/event';
   import { CircleStop, Database, Download, Moon, PanelLeft, Play, Sun } from 'lucide-svelte';
   import { onMount } from 'svelte';
-  import { api, errorMessage, type CollectionJobInfo, type ExportColumn, type ExportFormat, type HealthInfo, type Organization, type ProviderSearchConfig, type ProviderStatus, type ScrapeProgress, type SearchRunInfo, type SourceKind } from './lib/ipc';
+  import { api, errorMessage, searchRequestLabel, type CollectionJobInfo, type ExportColumn, type ExportFormat, type HealthInfo, type Organization, type ProviderSearchConfig, type ProviderStatus, type ScrapeProgress, type SearchRequest, type SearchRunInfo, type SourceKind } from './lib/ipc';
   import type { CatalogCity, CatalogRubric } from './lib/ipc';
   import LeadTable from './lib/components/LeadTable.svelte';
-  import ProviderControls from './lib/components/ProviderControls.svelte';
   import ProviderStatusPanel from './lib/components/ProviderStatusPanel.svelte';
-  import ParselabKeySettings from './lib/components/ParselabKeySettings.svelte';
   import AppUpdaterSettings from './lib/components/AppUpdaterSettings.svelte';
 
-  const allSources: SourceKind[] = ['twoGis'];
   const defaultColumnOrder: ExportColumn[] = ['company', 'category', 'sources', 'address', 'phone', 'inn', 'website', 'tags'];
-  const initialProviderConfigs: ProviderSearchConfig[] = [
+  const providerConfigs: ProviderSearchConfig[] = [
     { source: 'twoGis', enabled: true, maxResults: 50_000, maxPages: 1000, concurrency: 1, requestDelayMs: 0, preset: 'gentle', maxRetries: 2, backoffBaseSeconds: 60 },
   ];
 
@@ -22,7 +19,8 @@
   let catalogRubrics: CatalogRubric[] = [];
   let selectedRubrics: string[] = [];
   let rubricSearch = '';
-  let providerConfigs: ProviderSearchConfig[] = initialProviderConfigs;
+  let rubricsLoading = false;
+  let rubricsError = '';
   let providerStatuses: ProviderStatus[] = [];
   let rows: Organization[] = [];
   let totalRows = 0;
@@ -41,14 +39,12 @@
   let health: HealthInfo | null = null;
   let theme: 'frost' | 'graphite' = 'frost';
   let sidebarCollapsed = false;
-  let parselabKeySaved = false;
   let columnOrder: ExportColumn[] = defaultColumnOrder;
 
   $: matchingCatalogCities = catalogCities.filter((city) =>
     !cityFilter || city.name.toLowerCase().includes(cityFilter.toLowerCase()));
   $: visibleRubrics = catalogRubrics.filter((rubric) =>
     !rubricSearch || rubric.name.toLowerCase().includes(rubricSearch.toLowerCase()));
-  $: selectedSources = providerConfigs.filter((config) => config.enabled).map((config) => config.source);
 
   function handleKeydown(event: KeyboardEvent) {
     if (event.metaKey && event.key.toLowerCase() === 'b') {
@@ -69,11 +65,10 @@
     if (storedTheme === 'graphite') theme = 'graphite';
     applyTheme();
     void api.health().then((value) => (health = value)).catch(() => undefined);
-    void api.parselabKeySaved().then((value) => (parselabKeySaved = value)).catch(() => undefined);
     void api.catalogCities().then((value) => {
       catalogCities = value;
       if (!selectedCity && value.length > 0) selectCity(value.find((city) => city.id === '69') ?? value[0]);
-    }).catch(() => undefined);
+    }).catch((cause) => { error = errorMessage(cause); });
     void loadRecentRuns().catch(() => undefined);
     const unlisten = listen<ScrapeProgress>('scrape-progress', ({ payload }) => {
       message = payload.message;
@@ -99,11 +94,23 @@
     };
   });
 
-  function selectCity(city: CatalogCity) {
+  async function selectCity(city: CatalogCity) {
     selectedCity = city;
     selectedRubrics = [];
     catalogRubrics = [];
-    void api.catalogCityRubrics(city.id).then((value) => (catalogRubrics = value)).catch(() => undefined);
+    rubricsError = '';
+    rubricsLoading = true;
+    try {
+      const value = await api.catalogCityRubrics(city.id);
+      if (selectedCity?.id !== city.id) return;
+      catalogRubrics = value;
+      selectedRubrics = value.map((rubric) => rubric.id);
+      if (value.length === 0) rubricsError = 'Для этого города нет доступных выгрузок';
+    } catch (cause) {
+      if (selectedCity?.id === city.id) rubricsError = errorMessage(cause);
+    } finally {
+      if (selectedCity?.id === city.id) rubricsLoading = false;
+    }
   }
 
   function toggleRubric(id: string) {
@@ -113,7 +120,11 @@
   }
 
   function toggleAllRubrics() {
-    selectedRubrics = selectedRubrics.length === visibleRubrics.length ? [] : visibleRubrics.map((rubric) => rubric.id);
+    const visibleIds = visibleRubrics.map((rubric) => rubric.id);
+    const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedRubrics.includes(id));
+    selectedRubrics = allVisibleSelected
+      ? selectedRubrics.filter((id) => !visibleIds.includes(id))
+      : [...new Set([...selectedRubrics, ...visibleIds])];
   }
 
   function applyTheme() {
@@ -123,7 +134,7 @@
   function toggleTheme() { theme = theme === 'frost' ? 'graphite' : 'frost'; applyTheme(); }
   function runLabel(run: SearchRunInfo) {
     const when = new Date(run.finishedAt).toLocaleString();
-    return `${when} · ${run.request.query}`;
+    return `${when} · ${searchRequestLabel(run.request)}`;
   }
 
   async function loadRun(runId: string, offset = 0) {
@@ -137,7 +148,7 @@
       rawRecords = run.rawRecords;
       duplicatesMerged = run.duplicatesMerged;
       warnings = run.warnings;
-      message = `${run.request.query} · уникальных лидов: ${totalRows.toLocaleString()}`;
+      message = `${searchRequestLabel(run.request)} · уникальных лидов: ${totalRows.toLocaleString()}`;
     }
   }
 
@@ -154,30 +165,19 @@
     if (rows.length > 0) message = 'Загружены результаты старой версии · выполни новый поиск для экспорта по запуску';
   }
 
-  function buildRequest() {
-    const active = providerConfigs.filter((config) => config.enabled);
+  function buildRequest(): SearchRequest {
     const cityId = selectedCity?.id ?? '';
     return {
       region: cityId,
       regions: [cityId],
-      query: selectedRubrics.join(','),
-      maxResults: Math.max(1, ...active.map((config) => config.maxResults)),
-      maxPages: Math.max(1, ...active.map((config) => config.maxPages)),
-      concurrency: Math.max(1, ...active.map((config) => config.concurrency)),
-      requestDelayMs: Math.min(...active.map((config) => config.requestDelayMs), 10_000),
-      sources: active.map((config) => config.source),
+      query: (selectedRubrics.length > 0 ? selectedRubrics : catalogRubrics.map((rubric) => rubric.id)).join(','),
+      maxResults: 50_000,
+      maxPages: 1_000,
+      concurrency: 1,
+      requestDelayMs: 0,
+      sources: ['twoGis'],
       providerConfigs,
     };
-  }
-
-  async function saveParselabKey(key: string) {
-    await api.saveParselabKey(key);
-    parselabKeySaved = true;
-  }
-
-  async function deleteParselabKey() {
-    await api.deleteParselabKey();
-    parselabKeySaved = false;
   }
 
   function applySummary(summary: Awaited<ReturnType<typeof api.startSearch>>) {
@@ -192,14 +192,19 @@
     message = `Уникальных лидов: ${summary.organizationCount.toLocaleString()} · исходных записей: ${summary.rawRecords.toLocaleString()} · объединено: ${summary.duplicatesMerged.toLocaleString()}`;
   }
 
-  async function runSearch() {
+  async function collectLeads(request: SearchRequest) {
     running = true; error = ''; warnings = []; providerStatuses = []; progress = 1; message = 'Запуск поиска';
     try {
-      const summary = await api.startSearch(buildRequest());
+      const summary = await api.startSearch(request);
       applySummary(summary);
       [runs, jobs] = await Promise.all([api.recentRuns(30), api.recentCollectionJobs(30)]);
     } catch (e) { error = errorMessage(e); message = 'Поиск остановлен'; }
     finally { running = false; }
+  }
+
+  async function runSearch() {
+    if (running || rubricsLoading || !selectedCity || catalogRubrics.length === 0) return;
+    await collectLeads(buildRequest());
   }
 
   async function resumeJob(jobId: string) {
@@ -265,14 +270,14 @@
         />
         <div class="city-list" role="listbox" aria-label="Города с выгрузками">
           {#each matchingCatalogCities as city (city.id)}
-            <button type="button" role="option" class="city-option" class:active={selectedCity?.id === city.id} onclick={() => selectCity(city)} disabled={running}>
+            <button type="button" role="option" aria-selected={selectedCity?.id === city.id} class="city-option" class:active={selectedCity?.id === city.id} onclick={() => void selectCity(city)} disabled={running}>
               <strong>{city.name}</strong>
             </button>
           {:else}
             <div class="no-cities">Нет городов по запросу</div>
           {/each}
         </div>
-        {#if selectedCity}<small class="selected-location">{selectedCity.name} · {catalogRubrics.length} рубрик</small>{/if}
+        {#if selectedCity}<small class="selected-location">{selectedCity.name} · {rubricsLoading ? 'загружаю рубрики…' : `${catalogRubrics.length} рубрик`}</small>{/if}
       </div>
 
       <div class="location-field">
@@ -290,6 +295,11 @@
           oninput={(event) => (rubricSearch = event.currentTarget.value)}
         />
         <div class="rubric-list" role="group" aria-label="Рубрики города">
+          {#if rubricsLoading}
+            <div class="no-cities">Загружаю рубрики…</div>
+          {:else if rubricsError}
+            <div class="no-cities" role="status">{rubricsError}</div>
+          {:else}
           {#each visibleRubrics as rubric (rubric.id)}
             <label class="rubric-row">
               <input
@@ -303,37 +313,23 @@
           {:else}
             <div class="no-cities">{selectedCity ? 'Рубрик не найдено' : 'Сначала выберите город'}</div>
           {/each}
+          {/if}
         </div>
-        {#if selectedRubrics.length > 0}<small class="selected-location">Выбрано рубрик: {selectedRubrics.length}</small>{/if}
+        {#if selectedRubrics.length > 0}<small class="selected-location">Выбрано рубрик: {selectedRubrics.length}</small>{:else if catalogRubrics.length > 0}<small class="selected-location">Будут загружены все рубрики</small>{/if}
       </div>
+    </div>
 
-      <details class="settings-disclosure" open>
-        <summary>Настройки источников</summary>
-        <div class="settings-content">
-          <ParselabKeySettings
-            saved={parselabKeySaved}
-            disabled={running}
-            onSave={saveParselabKey}
-            onDelete={deleteParselabKey}
-          />
-          <AppUpdaterSettings currentVersion={health?.appVersion} />
-          <ProviderControls
-            configs={providerConfigs}
-            {running}
-            availableSources={health?.availableSources ?? allSources}
-            onChange={(configs) => (providerConfigs = configs)}
-          />
-        </div>
-      </details>
-
+    <div class="sidebar-actions">
+      {#if rubricsError}<small class="sidebar-hint error-text">{rubricsError}</small>{/if}
       {#if running}
-        <button class="primary danger" onclick={cancelSearch}><CircleStop size={16} /> Остановить</button>
+        <button class="primary danger" onclick={cancelSearch}><CircleStop size={16} /> Остановить сбор</button>
       {:else}
-        <button class="primary" onclick={runSearch} disabled={!selectedCity || selectedRubrics.length === 0 || selectedSources.length === 0}><Play size={16} fill="currentColor" /> Собрать лиды</button>
+        <button class="primary" onclick={runSearch} disabled={!selectedCity || rubricsLoading || catalogRubrics.length === 0}><Play size={16} fill="currentColor" /> Собрать лиды</button>
       {/if}
     </div>
 
     <div class="sidebar-footer">
+      <AppUpdaterSettings currentVersion={health?.appVersion} />
       <button class="icon-button" onclick={toggleTheme} title="Сменить тему">{#if theme === 'frost'}<Moon size={16} />{:else}<Sun size={16} />{/if}</button>
     </div>
   </aside>
@@ -386,7 +382,6 @@
 
     <section class="stats">
       <div><Database size={16} /><strong>{totalRows}</strong><span>уникальных лидов</span></div>
-      <div><strong>{rows.filter((r) => (r.sources ?? []).length > 1).length}</strong><span>из 2+ источников</span></div>
       <div><strong>{rows.filter((r) => r.dedupe?.possibleDuplicate).length}</strong><span>возможных дублей</span></div>
       <div><strong>{rawRecords}</strong><span>исходных записей</span></div>
       <div><strong>{duplicatesMerged}</strong><span>объединено</span></div>
@@ -407,47 +402,26 @@
   .shell { display: grid; grid-template-columns: 292px minmax(0, 1fr); height: 100%; padding: 12px; gap: 12px; }
   .shell.sidebar-collapsed { grid-template-columns: minmax(0, 1fr); }
   .sidebar, .content { border: 1px solid var(--line); background: var(--panel); backdrop-filter: blur(24px) saturate(130%); box-shadow: var(--shadow); }
-  .sidebar { border-radius: 18px; padding: 16px; display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
+  .sidebar { border-radius: 18px; padding: 16px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
   .content { border-radius: 18px; min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
   .brand { display: flex; gap: 10px; align-items: center; padding: 2px 2px 18px; border-bottom: 1px solid var(--line); }
-  .form-section { display: grid; gap: 12px; padding-top: 18px; }
+  .form-section { display: grid; align-content: start; gap: 12px; padding: 18px 2px 12px; min-height: 0; flex: 1; overflow-y: auto; }
   .location-field { min-width: 0; }
   .location-field > label { display:block; }
-  .location-picker { position:relative; }
-  .location-picker input { display:block; }
-  .location-suggestions { position:absolute; z-index:5; top:calc(100% + 5px); left:0; right:0; max-height:300px; overflow-y:auto; padding:4px; border:1px solid var(--line); border-radius:11px; background:var(--panel-solid); box-shadow:var(--shadow); }
-  .location-option { display:flex; flex-direction:column; align-items:flex-start; width:100%; min-height:42px; padding:7px 9px; border:0; border-radius:7px; text-align:left; }
-  .location-option strong { color:var(--fg); font-size:12px; font-weight:600; }
-  .location-option small, .selected-location { color:var(--muted); font-size:10px; }
-  .location-option.active, .location-option:hover { background:var(--panel-muted); }
-  .region-option { border-bottom:1px solid var(--line); border-radius:7px 7px 3px 3px; }
-  .region-filter { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:5px; padding:4px 8px; border-radius:7px; color:var(--muted); background:var(--panel-muted); font-size:10px; }
-  .region-filter button { width:20px; height:20px; padding:0; border:0; }
+  .selected-location { color:var(--muted); font-size:10px; }
   .selected-location { display:block; margin:5px 2px 0; }
-  .no-suggestions { padding:12px; color:var(--muted); font-size:11px; }
   label span { display: block; color: var(--muted); font-size: 11px; font-weight: 650; margin: 0 0 6px 2px; text-transform: uppercase; letter-spacing: 0.055em; }
   input { width: 100%; height: 36px; border: 1px solid var(--line); background: var(--panel-solid); color: var(--fg); border-radius: 9px; padding: 0 10px; outline: none; transition: border 120ms ease, box-shadow 120ms ease; }
   input:focus { border-color: color-mix(in srgb, var(--fg) 28%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--fg) 7%, transparent); }
-  .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .settings-disclosure { border: 1px solid var(--line); border-radius: 11px; background: var(--panel-muted); padding: 0 10px; }
-  .settings-disclosure summary { min-height: 38px; display:flex; align-items:center; color:var(--fg); font-size:11px; font-weight:650; cursor:pointer; list-style:none; }
-  .settings-disclosure summary::-webkit-details-marker { display:none; }
-  .settings-disclosure summary::after { content:""; width:7px; height:7px; margin:0 2px 4px auto; border-right:1.5px solid var(--muted); border-bottom:1.5px solid var(--muted); transform:rotate(45deg); transition:transform 140ms ease; }
-  .settings-disclosure[open] summary::after { margin-bottom:-4px; transform:rotate(225deg); }
-  .settings-content { display:grid; gap:10px; padding:0 0 10px; }
-  .field-title { display:block; color:var(--muted); font-size:10px; font-weight:650; margin:0 0 2px 2px; text-transform:uppercase; letter-spacing:.055em; }
-  .source-block { border:1px solid var(--line); background:var(--panel-muted); border-radius:11px; padding:9px 10px; display:grid; gap:3px; }
-  .source-row { display:flex; align-items:center; gap:8px; min-height:28px; margin:0; cursor:pointer; }
-  .source-row input[type='checkbox'] { flex:0 0 15px; width:15px; height:15px; margin:0; padding:0; accent-color:var(--fg); }
-  .source-row span { display:flex; align-items:baseline; justify-content:space-between; gap:8px; width:100%; margin:0; text-transform:none; letter-spacing:0; font-size:11px; }
-  .source-row strong { color:var(--fg); font-size:11px; font-weight:650; }
-  .source-row small { color:var(--muted); font-size:9px; font-weight:400; white-space:nowrap; }
   button { height: 34px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-solid); color: var(--fg); padding: 0 11px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; font-size: 12px; font-weight: 600; }
   button:disabled { opacity: .45; }
   button:not(:disabled):active { transform: translateY(1px); }
   .primary { margin-top: 4px; width: 100%; height: 38px; background: var(--accent); color: var(--accent-fg); border-color: transparent; }
   .danger { background: color-mix(in srgb, var(--danger) 86%, #111); color: white; }
-  .sidebar-footer { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 11px; }
+  .sidebar-actions { padding: 4px 0 10px; border-top: 1px solid var(--line); flex: 0 0 auto; }
+  .sidebar-hint { display:block; margin:0 0 7px; font-size:10px; line-height:1.4; }
+  .error-text { color:var(--danger); }
+  .sidebar-footer { padding-top: 10px; border-top: 1px solid var(--line); display: flex; align-items: center; gap:8px; color: var(--muted); font-size: 11px; flex:0 0 auto; }
   .icon-button { width: 32px; padding: 0; }
   .heading { display:flex; align-items:center; gap:10px; min-width:0; }
   .sidebar-toggle { flex:0 0 auto; }
@@ -462,7 +436,6 @@
   .notice.error { color: var(--danger); background: color-mix(in srgb, var(--danger) 7%, var(--panel-solid)); }
   .notice.warning { color: var(--warning); background: color-mix(in srgb, var(--warning) 7%, var(--panel-solid)); }
   .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding: 14px 18px; }
-  .stats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .stats > div { min-width: 0; height: 54px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel-solid); padding: 10px 9px; display: flex; align-items: center; gap: 7px; }
   .stats strong { font-size: 17px; letter-spacing: -0.04em; }
   .stats span { color: var(--muted); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -484,4 +457,5 @@
   .rubrics-heading { display: flex; align-items: center; justify-content: space-between; }
   .mini-button { height: 22px; padding: 0 8px; font-size: 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-solid); color: var(--muted); cursor: pointer; }
   .mini-button:disabled { opacity: .45; cursor: default; }
+  @media (prefers-reduced-motion: reduce) { * { scroll-behavior:auto !important; transition-duration:0.01ms !important; } }
 </style>

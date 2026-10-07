@@ -36,6 +36,8 @@ fn default_sources() -> Vec<SourceKind> {
     vec![SourceKind::TwoGis]
 }
 
+const MAX_RUBRIC_QUERY_LENGTH: usize = 16_384;
+
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchRequest {
@@ -93,7 +95,11 @@ impl SearchRequest {
             ));
         }
         let query = self.query.trim();
-        if query.len() < 2 || query.len() > 160 {
+        let is_rubric_id_list = query.len() <= MAX_RUBRIC_QUERY_LENGTH
+            && query
+                .split(',')
+                .all(|id| !id.is_empty() && id.bytes().all(|byte| byte.is_ascii_digit()));
+        if !(2..=160).contains(&query.len()) && !is_rubric_id_list {
             return Err(AppError::validation("Query must contain 2-160 characters"));
         }
         if self.max_results == 0 || self.max_results > MAX_PROVIDER_RESULTS {

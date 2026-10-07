@@ -97,9 +97,6 @@ export const api = {
   checkForUpdates: async () => unwrap(await commands.checkForUpdates()),
   installUpdate: async () => unwrap(await commands.installUpdate()),
   health: () => commands.health(),
-  saveParselabKey: async (key: string) => unwrap(await commands.saveParselabKey(key)),
-  deleteParselabKey: async () => unwrap(await commands.deleteParselabKey()),
-  parselabKeySaved: () => commands.parselabKeySaved(),
 };
 
 export function errorMessage(error: unknown): string {
@@ -109,4 +106,13 @@ export function errorMessage(error: unknown): string {
     if (typeof message === 'string') return message;
   }
   return 'Неизвестная ошибка';
+}
+
+export function searchRequestLabel(request: SearchRequest): string {
+  const rubrics = request.query.split(',');
+  const sources = request.sources ?? ['twoGis'];
+  if (sources.length === 1 && sources[0] === 'twoGis' && rubrics.every((id) => /^\d+$/.test(id))) {
+    return `2GIS · ${rubrics.length} рубрик`;
+  }
+  return request.query;
 }

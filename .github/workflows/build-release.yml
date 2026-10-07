@@ -66,6 +66,8 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          PARSELAB_DB_URL: ${{ secrets.PARSELAB_DB_URL }}
+          PARSELAB_KEY: ${{ secrets.PARSELAB_KEY }}
         run: pnpm --dir apps/desktop tauri build --bundles "${{ matrix.bundles }}"
       - name: Upload build artifact
         uses: actions/upload-artifact@v6

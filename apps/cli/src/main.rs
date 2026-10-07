@@ -189,11 +189,7 @@ async fn collect(
         .collect();
 
     let store = SqliteStore::connect(&db).await?;
-    let keyed_provider: Arc<dyn DirectoryProvider> = Arc::new(
-        Arc::try_unwrap(provider)
-            .unwrap_or_else(|arc| (*arc).clone())
-            .with_license_key_state(Arc::new(std::sync::RwLock::new(Some(key)))),
-    );
+    let keyed_provider: Arc<dyn DirectoryProvider> = provider;
     let providers: Vec<Arc<dyn DirectoryProvider>> = vec![keyed_provider];
     let service = twogis_application::ApplicationService::new(providers, store);
 

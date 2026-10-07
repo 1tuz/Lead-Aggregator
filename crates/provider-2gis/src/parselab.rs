@@ -1,10 +1,10 @@
 //! ParseLab db-export provider.
 //!
 //! Downloads prebuilt city/rubric JSON exports from the bundled sealed host
-//! (`DB_EXPORT_HOST/[cityId]/[rubricId].json`) using the user's license key.
+//! (`DB_EXPORT_HOST/[cityId]/[rubricId].json`).
 //! This mirrors the upstream Windows parser: it never touches 2gis.ru; each
 //! rubric file is one HTTP GET, deduplicated by firm id, with retry/backoff
-//! on network errors and license failure classification.
+//! on network errors.
 
 use std::collections::HashSet;
 
@@ -41,34 +41,13 @@ fn open_sealed(sealed: &twogis_domain::Sealed) -> Result<String, AppError> {
 #[derive(Clone)]
 pub struct ParselabProvider {
     http: twogis_provider_core::CatalogHttpClient,
-    license_key: std::sync::Arc<std::sync::RwLock<Option<String>>>,
 }
 
 impl ParselabProvider {
     pub fn new() -> Result<Self, AppError> {
         Ok(Self {
             http: twogis_provider_core::CatalogHttpClient::new()?,
-            license_key: std::sync::Arc::new(std::sync::RwLock::new(None)),
         })
-    }
-
-    pub fn with_license_key_state(
-        mut self,
-        key: std::sync::Arc<std::sync::RwLock<Option<String>>>,
-    ) -> Self {
-        self.license_key = key;
-        self
-    }
-
-    fn license_key(&self) -> Result<String, AppError> {
-        self.license_key
-            .read()
-            .map_err(|_| AppError::storage("Состояние лицензионного ключа недоступно"))?
-            .clone()
-            .filter(|key| !key.trim().is_empty())
-            .ok_or_else(|| {
-                AppError::validation("Сначала сохраните лицензионный ключ ParseLab в настройках")
-            })
     }
 
     pub fn rubric_url(&self, city_id: &str, rubric_id: &str, key: &str) -> Result<Url, AppError> {
@@ -147,7 +126,9 @@ impl DirectoryProvider for ParselabProvider {
         progress: ProgressSink,
         control: ProviderControl,
     ) -> Result<ProviderOutput, AppError> {
-        let key = self.license_key()?;
+        // The export route requires a `key` query parameter, but currently
+        // serves public city/rubric data when its value is empty (`key=`).
+        let key = "";
         // request.region holds the ParseLab city id (e.g. "69"); request.query
         // holds a comma-separated rubric id list produced by the UI picker.
         let city_id = request.region.trim().to_owned();
@@ -347,7 +328,7 @@ mod tests {
                 "+7 3902 12-34-56",null,"hello@example.ru","https://example.ru",
                 "https://vk.com/example",null,"91.12345","53.71234","Кафе","Кофейни"]"#,
         )
-        .unwrap();
+        .expect("valid row json");
         let org = parse_export_row(&row, "69").expect("valid row");
         assert_eq!(org.id, "69:12345");
         assert_eq!(org.name, "Кафе Пример");
@@ -365,19 +346,19 @@ mod tests {
     fn skips_rows_without_id_or_name() {
         let empty: Value = serde_json::from_str(r#"[]""#).unwrap_or(Value::Null);
         assert!(parse_export_row(&empty, "69").is_none());
-        let no_name: Value = serde_json::from_str(r#"["1","","город"]"#).unwrap();
+        let no_name: Value = serde_json::from_str(r#"["1","","город"]"#).expect("valid row json");
         assert!(parse_export_row(&no_name, "69").is_none());
     }
 
     #[test]
-    fn rubric_url_contains_city_rubric_and_key() {
-        let provider = ParselabProvider::new().unwrap();
+    fn rubric_url_uses_empty_key_for_public_export() {
+        let provider = ParselabProvider::new().expect("provider init");
         let url = provider
-            .rubric_url("69", "122", "test-key-123")
-            .unwrap()
+            .rubric_url("69", "122", "")
+            .expect("url build")
             .to_string();
         assert!(url.contains("/69/122.json"), "unexpected url: {url}");
-        assert!(url.ends_with("key=test-key-123"));
+        assert!(url.ends_with("?key="));
         // Host comes from the sealed blob; plaintext host must not be hardcoded anywhere.
         assert!(url.starts_with("http"));
     }

@@ -1,16 +1,14 @@
 <script lang="ts">
   import { listen } from '@tauri-apps/api/event';
-  import { Check, Download, RefreshCw } from 'lucide-svelte';
+  import { Download, RefreshCw } from 'lucide-svelte';
   import { onMount } from 'svelte';
   import { api, errorMessage } from '../ipc';
 
   let { currentVersion = '' }: { currentVersion?: string } = $props();
-  let autoCheck = $state(true);
   let checking = $state(false);
   let installing = $state(false);
   let updateVersion = $state<string | null>(null);
-  let notes = $state<string | null>(null);
-  let status = $state('Проверка обновлений включена');
+  let status = $state('Проверка…');
   let error = $state('');
   let downloaded = $state(0);
   let total = $state<number | null>(null);
@@ -24,12 +22,10 @@
     try {
       const result = await api.checkForUpdates();
       updateVersion = result.version;
-      notes = result.notes;
-      if (!result.version) status = silent ? 'Приложение обновлено' : 'Установлена последняя версия';
-      else status = `Доступна версия ${result.version}`;
+      status = result.version ? `Доступна версия ${result.version}` : 'Установлена последняя версия';
     } catch (cause) {
       if (!silent) error = errorMessage(cause);
-      status = silent ? 'Не удалось проверить обновления' : '';
+      status = 'Не удалось проверить обновления';
     } finally {
       checking = false;
     }
@@ -47,58 +43,46 @@
     } catch (cause) {
       error = errorMessage(cause);
       installing = false;
-      status = '';
+      status = 'Не удалось установить обновление';
     }
   }
 
   onMount(() => {
-    autoCheck = localStorage.getItem('auto-update-check') !== 'false';
     const unlisten = listen<{ downloaded: number; total: number | null }>('update-progress', ({ payload }) => {
       downloaded = payload.downloaded;
       total = payload.total;
     });
-    const initial = window.setTimeout(() => { if (autoCheck) void check(true); }, 1200);
-    const interval = window.setInterval(() => { if (autoCheck) void check(true); }, 6 * 60 * 60 * 1000);
+    void check(true);
+    const interval = window.setInterval(() => void check(true), 6 * 60 * 60 * 1000);
     return () => {
-      window.clearTimeout(initial);
       window.clearInterval(interval);
       void unlisten.then((stop) => stop());
     };
   });
-
-  function toggleAutoCheck(event: Event) {
-    autoCheck = (event.currentTarget as HTMLInputElement).checked;
-    localStorage.setItem('auto-update-check', String(autoCheck));
-    if (autoCheck) void check(true);
-  }
 </script>
 
-<section class="update-card" aria-label="Обновления приложения">
-  <div class="update-heading"><span class="update-icon"><RefreshCw size={14} /></span><div><strong>Обновления приложения</strong><small>Установлена версия {currentVersion || '—'}</small></div></div>
-  <label class="auto-check"><input type="checkbox" checked={autoCheck} onchange={toggleAutoCheck} /><span>Автоматически проверять обновления</span></label>
-  <p class="update-status" aria-live="polite">{status}</p>
-  {#if notes && updateVersion}<p class="update-notes">{notes}</p>{/if}
-  {#if progress !== null}<progress max="100" value={progress}></progress>{:else if installing}<progress></progress>{/if}
-  {#if error}<p class="update-error">{error}</p>{/if}
-  <div class="update-actions">
-    <button type="button" onclick={() => void check()} disabled={checking || installing} aria-label="Проверить обновления"><RefreshCw size={13} /> {checking ? 'Проверяю…' : 'Проверить'}</button>
-    {#if updateVersion}<button type="button" class="install" onclick={() => void install()} disabled={installing}><Download size={13} /> {installing ? 'Обновляю…' : `Обновить до ${updateVersion}`}</button>{/if}
+<section class="update-row" aria-label="Обновление приложения">
+  <div class="update-copy">
+    <strong>Обновление приложения</strong>
+    <small>Версия {currentVersion || '—'} · {status}</small>
+    {#if error}<small class="error">{error}</small>{/if}
+    {#if progress !== null}<progress max="100" value={progress}></progress>{:else if installing}<progress></progress>{/if}
   </div>
+  {#if updateVersion}
+    <button type="button" class="install" onclick={() => void install()} disabled={installing} aria-label={`Установить версию ${updateVersion}`} title={`Установить ${updateVersion}`}><Download size={14} /></button>
+  {:else}
+    <button type="button" onclick={() => void check()} disabled={checking || installing} aria-label="Проверить обновления" title="Проверить обновления"><RefreshCw size={14} /></button>
+  {/if}
 </section>
 
 <style>
-  .update-card { display:grid; gap:8px; border:1px solid var(--line); background:var(--panel-muted); border-radius:11px; padding:10px; }
-  .update-heading { display:flex; align-items:center; gap:8px; }
-  .update-heading strong { display:block; font-size:11px; }
-  .update-heading small { display:block; color:var(--muted); font-size:9px; margin-top:2px; }
-  .update-icon { display:grid; place-items:center; width:25px; height:25px; border:1px solid var(--line); border-radius:8px; background:var(--panel-solid); }
-  .auto-check { display:flex; align-items:center; gap:7px; color:var(--fg); font-size:10px; cursor:pointer; }
-  .auto-check input { width:14px; height:14px; margin:0; accent-color:var(--fg); }
-  .update-status,.update-error,.update-notes { margin:0; font-size:10px; line-height:1.4; color:var(--muted); overflow-wrap:anywhere; }
-  .update-error { color:var(--danger); }
-  progress { width:100%; height:5px; accent-color:var(--fg); }
-  .update-actions { display:flex; flex-wrap:wrap; gap:6px; }
-  .update-actions button { min-height:29px; border:1px solid var(--line); border-radius:8px; background:var(--panel-solid); color:var(--fg); padding:0 8px; display:flex; align-items:center; justify-content:center; gap:5px; font-size:10px; font-weight:600; }
-  .update-actions button.install { flex:1; background:var(--fg); color:var(--panel-solid); }
-  .update-actions button:disabled { opacity:.5; }
+  .update-row { display:flex; align-items:center; gap:7px; min-width:0; flex:1; }
+  .update-copy { display:grid; gap:3px; min-width:0; flex:1; }
+  strong { color:var(--fg); font-size:10px; font-weight:650; }
+  small { color:var(--muted); font-size:9px; line-height:1.35; overflow-wrap:anywhere; }
+  small.error { color:var(--danger); }
+  progress { width:100%; height:3px; accent-color:var(--fg); }
+  button { display:grid; place-items:center; flex:0 0 30px; width:30px; height:30px; border:1px solid var(--line); border-radius:8px; background:var(--panel-solid); color:var(--fg); cursor:pointer; }
+  button.install { border-color:transparent; background:var(--accent); color:var(--accent-fg); }
+  button:disabled { opacity:.5; cursor:default; }
 </style>

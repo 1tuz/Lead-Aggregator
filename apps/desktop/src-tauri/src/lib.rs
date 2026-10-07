@@ -1,5 +1,4 @@
 mod commands;
-mod credentials;
 mod state;
 mod updater;
 
@@ -18,9 +17,9 @@ use twogis_storage_sqlite::SqliteStore;
 use crate::{
     commands::{
         cancel_search, catalog_categories_list, catalog_cities_list, catalog_city_rubrics,
-        delete_parselab_key, export_results, health, parselab_key_saved, pause_provider,
-        recent_collection_jobs, recent_results, recent_runs, results_for_run, results_for_run_page,
-        resume_provider, resume_search, save_parselab_key, start_search,
+        export_results, health, pause_provider, recent_collection_jobs, recent_results,
+        recent_runs, results_for_run, results_for_run_page, resume_provider, resume_search,
+        start_search,
     },
     state::AppState,
     updater::{check_for_updates, install_update},
@@ -40,9 +39,6 @@ fn specta_builder() -> Builder<Wry> {
         results_for_run_page,
         export_results,
         health,
-        save_parselab_key,
-        delete_parselab_key,
-        parselab_key_saved,
         catalog_cities_list,
         catalog_city_rubrics,
         catalog_categories_list,
@@ -73,24 +69,15 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             let db_path = app_data.join("lead-aggregator.db");
             migrate_legacy_database(&app_data, &db_path)?;
 
-            let license_key = credentials::load_parselab_key().unwrap_or_default();
-            let license_key_state = Arc::new(std::sync::RwLock::new(license_key));
-
-            let parselab_provider = Arc::new(
-                ParselabProvider::new()
-                    .map_err(as_setup_error)?
-                    .with_license_key_state(license_key_state.clone()),
-            );
-            let providers: Vec<Arc<dyn DirectoryProvider>> = vec![parselab_provider.clone()];
+            let providers: Vec<Arc<dyn DirectoryProvider>> =
+                vec![Arc::new(ParselabProvider::new().map_err(as_setup_error)?)];
             let store = tauri::async_runtime::block_on(SqliteStore::connect(&db_path))
                 .map_err(as_setup_error)?;
             let service = Arc::new(ApplicationService::new(providers, store));
             app.manage(AppState {
                 app: handle,
                 service,
-                parselab_provider,
                 cancellation: tokio::sync::Mutex::new(None),
-                license_key_state,
             });
             Ok(())
         })

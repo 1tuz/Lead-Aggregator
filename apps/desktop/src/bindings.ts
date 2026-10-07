@@ -20,9 +20,6 @@ export const commands = {
 	format: ExportFormat,
 } | null, AppError>(__TAURI_INVOKE("export_results", { runId, format })),
 	health: () => __TAURI_INVOKE<HealthInfo>("health"),
-	saveParselabKey: (key: string) => typedError<boolean, AppError>(__TAURI_INVOKE("save_parselab_key", { key })),
-	deleteParselabKey: () => typedError<boolean, AppError>(__TAURI_INVOKE("delete_parselab_key")),
-	parselabKeySaved: () => __TAURI_INVOKE<boolean>("parselab_key_saved"),
 	catalogCitiesList: () => __TAURI_INVOKE<CatalogCity[]>("catalog_cities_list"),
 	catalogCityRubrics: (cityId: string) => __TAURI_INVOKE<CatalogRubric[]>("catalog_city_rubrics", { cityId }),
 	catalogCategoriesList: () => __TAURI_INVOKE<CatalogCategory[]>("catalog_categories_list"),
@@ -216,4 +213,3 @@ async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; dat
         return { status: "error", error: e as any };
     }
 }
-

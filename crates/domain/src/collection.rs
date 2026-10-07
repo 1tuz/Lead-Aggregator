@@ -214,4 +214,11 @@ mod tests {
         };
         assert!(config.validate().is_ok());
     }
+
+    #[test]
+    fn full_city_rubric_list_is_a_valid_query() {
+        let mut request = SearchRequest::default();
+        request.query = crate::city_rubrics("69").join(",");
+        assert!(request.validate().is_ok());
+    }
 }
